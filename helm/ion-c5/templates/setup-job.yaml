@@ -1,0 +1,83 @@
+{{- if .Values.setup.enabled }}
+{{- $hooks := ternary "pre-install,pre-upgrade" "pre-install" .Values.setup.runOnUpgrade }}
+# Hook-scoped copy of the config file: pre-install hooks run before regular
+# manifests exist, so the Job cannot use the release ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ion-c5.fullname" . }}-setup-config
+  labels:
+    {{- include "ion-c5.labels" . | nindent 4 }}
+    app.kubernetes.io/component: setup
+  annotations:
+    helm.sh/hook: {{ $hooks }}
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  config.ini: |
+    {{- include "ion-c5.configIni" . | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ion-c5.fullname" . }}-setup
+  labels:
+    {{- include "ion-c5.labels" . | nindent 4 }}
+    app.kubernetes.io/component: setup
+  annotations:
+    helm.sh/hook: {{ $hooks }}
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.setup.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ion-c5.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: setup
+    spec:
+      restartPolicy: Never
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: setup
+          {{- if .Values.setup.image.digest }}
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.setup.image.repository }}@{{ .Values.setup.image.digest }}"
+          {{- else }}
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.setup.image.repository }}:{{ .Values.setup.image.tag }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args: ["initialize-databases"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: ION_C5_SETUP_CONFIG_FILE
+              value: /etc/ion-c5/config.ini
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.appSecretName }}
+          resources:
+            {{- toYaml .Values.setup.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /etc/ion-c5/config.ini
+              subPath: config.ini
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: {{ include "ion-c5.fullname" . }}-setup-config
+{{- end }}

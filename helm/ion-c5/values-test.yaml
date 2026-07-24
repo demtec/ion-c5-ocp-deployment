@@ -1,0 +1,41 @@
+# Example environment overlay: TEST
+# Usage: helm upgrade --install ion-c5 ./ion-c5 -f ion-c5/values.yaml -f ion-c5/values-test.yaml
+# Copy and adapt for INT / PREPROD / PROD — only this file changes between environments.
+
+global:
+  imageRegistry: "registry.customer.example/ion-c5"
+
+config:
+  peppol_identifier: "0242:SEATID"          # test SEATID
+  discover_network: "peppol-test"           # PROD: "peppol"
+  main_db_type: "oracle"
+  main_db_user: "C5MAIN_T"
+  main_db_host: "ora-test.customer.example:1521"
+  main_db_name: "?service_name=C5TEST"
+  receiver_db_type: "oracle"
+  receiver_db_user: "C5RECV_T"
+  receiver_db_host: "ora-test.customer.example:1521"
+  receiver_db_name: "?service_name=C5TEST"
+  tdd_db_type: "oracle"
+  tdd_db_user: "C5TDD_T"
+  tdd_db_host: "ora-test.customer.example:1521"
+  tdd_db_name: "?service_name=C5TEST"
+  # OCP router / external LB source IPs as seen by the receiver pods:
+  receiver_proxy_ip_addresses: "10.128.0.0/14"
+
+components:
+  receiver:
+    replicas: 1
+    pdb:
+      enabled: false
+    route:
+      host: "c5-ap-test.customer.example"
+  admin:
+    route:
+      host: "c5-admin-test.customer.example"
+      annotations:
+        haproxy.router.openshift.io/ip_whitelist: "10.0.0.0/8"
+  processor:
+    replicas: 1
+  sender:
+    replicas: 1

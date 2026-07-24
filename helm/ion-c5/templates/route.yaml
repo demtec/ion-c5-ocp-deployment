@@ -1,0 +1,29 @@
+{{- $root := . -}}
+{{- range $name, $comp := .Values.components }}
+{{- if and $comp.enabled $comp.route $comp.route.enabled }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "ion-c5.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "ion-c5.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+  {{- with $comp.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $comp.route.host }}
+  host: {{ $comp.route.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "ion-c5.fullname" $root }}-{{ $name }}
+  port:
+    targetPort: http
+  tls:
+    termination: {{ $comp.route.tlsTermination | default "edge" }}
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}
+{{- end }}

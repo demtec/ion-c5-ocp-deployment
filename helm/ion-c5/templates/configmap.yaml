@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ion-c5.fullname" . }}-config
+  labels:
+    {{- include "ion-c5.labels" . | nindent 4 }}
+data:
+  config.ini: |
+    {{- include "ion-c5.configIni" . | nindent 4 }}
+---
+# Env-var form of the non-sensitive configuration (ION_C5_<KEY> convention).
+# Used for one-off interactive runs of ion-c5-setup (create-admin-user), see chart README.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ion-c5.fullname" . }}-env
+  labels:
+    {{- include "ion-c5.labels" . | nindent 4 }}
+data:
+{{- range $k, $v := .Values.config }}
+  ION_C5_{{ upper $k }}: {{ $v | quote }}
+{{- end }}

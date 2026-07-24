@@ -1,0 +1,20 @@
+{{- $root := . -}}
+{{- range $name, $comp := .Values.components }}
+{{- if and $comp.enabled $comp.pdb $comp.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ion-c5.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "ion-c5.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  minAvailable: {{ $comp.pdb.minAvailable | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ion-c5.name" $root }}
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $name }}
+{{- end }}
+{{- end }}

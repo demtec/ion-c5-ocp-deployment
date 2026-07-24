@@ -1,0 +1,52 @@
+{{- if .Values.networkPolicy.enabled }}
+# Baseline ingress policies. Egress restrictions (DBs, Internet for
+# receiver/sender/discover) should be added once the supplier confirms the
+# full network matrix — see FIT-GAP-ANALYSIS.md §5.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ion-c5.fullname" . }}-default-deny-ingress
+  labels:
+    {{- include "ion-c5.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# Allow all pods within this namespace to talk to each other
+# (processor -> docval, sender -> discover, ...).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ion-c5.fullname" . }}-allow-same-namespace
+  labels:
+    {{- include "ion-c5.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  ingress:
+    - from:
+        - podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# Allow the OpenShift router to reach the externally exposed modules.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ion-c5.fullname" . }}-allow-openshift-ingress
+  labels:
+    {{- include "ion-c5.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: ["receiver", "admin"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+  policyTypes:
+    - Ingress
+{{- end }}

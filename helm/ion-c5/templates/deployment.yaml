@@ -1,0 +1,144 @@
+{{- $root := . -}}
+{{- range $name, $comp := .Values.components }}
+{{- if $comp.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ion-c5.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "ion-c5.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  {{- if not (and $comp.hpa $comp.hpa.enabled) }}
+  replicas: {{ $comp.replicas | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ion-c5.name" $root }}
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "ion-c5.name" $root }}
+        app.kubernetes.io/instance: {{ $root.Release.Name }}
+        app.kubernetes.io/component: {{ $name }}
+      annotations:
+        checksum/config: {{ include "ion-c5.configIni" $root | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "ion-c5.serviceAccountName" $root }}
+      {{- with $root.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: {{ $root.Values.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ $name }}
+          {{- if $comp.image.digest }}
+          image: "{{ $root.Values.global.imageRegistry }}/{{ $comp.image.repository }}@{{ $comp.image.digest }}"
+          {{- else }}
+          image: "{{ $root.Values.global.imageRegistry }}/{{ $comp.image.repository }}:{{ $comp.image.tag }}"
+          {{- end }}
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: {{ $root.Values.securityContext.readOnlyRootFilesystem }}
+          {{- if $comp.containerPort }}
+          ports:
+            - name: http
+              containerPort: {{ $comp.containerPort }}
+              protocol: TCP
+          {{- end }}
+          env:
+            {{- if and $comp.listenPortEnv $comp.containerPort }}
+            - name: {{ $comp.listenPortEnv }}
+              value: {{ $comp.containerPort | quote }}
+            {{- end }}
+            {{- if $comp.configFileEnv }}
+            - name: {{ $comp.configFileEnv }}
+              value: /etc/ion-c5/config.ini
+            {{- end }}
+            {{- range $k, $v := $comp.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          {{- if $comp.useAppSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ $root.Values.secrets.appSecretName }}
+          {{- end }}
+          {{- if $comp.probes.enabled }}
+          startupProbe:
+            {{- if eq $comp.probes.type "http" }}
+            httpGet:
+              path: {{ $comp.probes.httpPath | default "/" }}
+              port: http
+            {{- else }}
+            tcpSocket:
+              port: http
+            {{- end }}
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            {{- if eq $comp.probes.type "http" }}
+            httpGet:
+              path: {{ $comp.probes.httpPath | default "/" }}
+              port: http
+            {{- else }}
+            tcpSocket:
+              port: http
+            {{- end }}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            {{- if eq $comp.probes.type "http" }}
+            httpGet:
+              path: {{ $comp.probes.httpPath | default "/" }}
+              port: http
+            {{- else }}
+            tcpSocket:
+              port: http
+            {{- end }}
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- end }}
+          resources:
+            {{- toYaml $comp.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if $comp.configFileEnv }}
+            - name: config
+              mountPath: /etc/ion-c5/config.ini
+              subPath: config.ini
+              readOnly: true
+            {{- end }}
+            {{- if $comp.peppolCert }}
+            - name: peppol
+              mountPath: /etc/ion-c5/peppol
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $comp.configFileEnv }}
+        - name: config
+          configMap:
+            name: {{ include "ion-c5.fullname" $root }}-config
+        {{- end }}
+        {{- if $comp.peppolCert }}
+        - name: peppol
+          secret:
+            secretName: {{ $root.Values.secrets.peppolSecretName }}
+        {{- end }}
+{{- end }}
+{{- end }}

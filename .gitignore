@@ -1,0 +1,6 @@
+# Vendor / proprietary artifacts — never publish (COTS supplier property or internal docs)
+docker_images/
+*.tar.gz
+ion-C5 Administrators Manual*.pdf
+*.docx
+sample_config.ini

@@ -1,0 +1,28 @@
+ion-C5 {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}" in namespace {{ .Release.Namespace }}.
+
+Next steps:
+
+1. Watch the rollout:
+     oc get pods -n {{ .Release.Namespace }} -w
+   Expected ready order: docval, discover -> receiver -> processor, sender, admin.
+
+2. Create the first admin user (one-off, interactive — prompts for username/password):
+     oc run {{ include "ion-c5.fullname" . }}-adminuser --rm -it --restart=Never \
+       --image={{ .Values.global.imageRegistry }}/{{ .Values.setup.image.repository }}:{{ .Values.setup.image.tag }} \
+       --overrides='{"spec":{"containers":[{"name":"adminuser","image":"{{ .Values.global.imageRegistry }}/{{ .Values.setup.image.repository }}:{{ .Values.setup.image.tag }}","args":["create-admin-user"],"stdin":true,"tty":true,"envFrom":[{"configMapRef":{"name":"{{ include "ion-c5.fullname" . }}-env"}},{"secretRef":{"name":"{{ .Values.secrets.appSecretName }}"}}]}]}}'
+
+3. Smoke tests (from a pod in the namespace):
+     curl http://{{ include "ion-c5.fullname" . }}-discover/v2
+     curl http://{{ include "ion-c5.fullname" . }}-discover/v2/peppol-test/0106:84418745
+
+4. Routes:
+{{- range $name, $comp := .Values.components }}
+{{- if and $comp.enabled $comp.route $comp.route.enabled }}
+     {{ $name }}: https://{{ $comp.route.host | default "<generated - oc get route>" }}
+{{- end }}
+{{- end }}
+
+5. Verify receiver_proxy_ip_addresses covers the router/LB IPs, then publish
+   https://<receiver-host>/as4 on your SMP.
+
+Reminder: log in to the admin UI and enable MFA (TOTP) for every admin account.

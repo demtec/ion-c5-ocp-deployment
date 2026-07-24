@@ -1,0 +1,297 @@
+# Default values for ion-c5.
+# Environment-specific overrides belong in values-<env>.yaml (see values-test.yaml).
+# No value in this file may be environment-specific.
+
+global:
+  # Customer container registry prefix (images pushed there from the supplier tarballs).
+  imageRegistry: "registry.customer.example/ion-c5"
+  imagePullPolicy: IfNotPresent
+  # - name: regcred
+  imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+# Pre-created Kubernetes Secrets (see chart README for exact key spec).
+secrets:
+  # Opaque secret whose KEYS ARE ENV VAR NAMES consumed by the modules:
+  #   ION_C5_MAIN_DB_PASSWORD, ION_C5_RECEIVER_DB_PASSWORD, ION_C5_TDD_DB_PASSWORD,
+  #   ION_C5_ADMIN_JWT_SECRET, ION_C5_PEPPOL_PRIVATE_KEY_PASSWORD (optional)
+  appSecretName: ion-c5-app
+  # Opaque secret with keys: certificate.pem, private.key (mounted to receiver & sender)
+  peppolSecretName: ion-c5-peppol
+
+# Non-sensitive runtime configuration rendered into a ConfigMap as config.ini
+# and mounted read-only at /etc/ion-c5/config.ini in all ion-c5-* modules.
+# Passwords / JWT secret are intentionally ABSENT here — they arrive as env vars
+# from secrets.appSecretName and env vars override the config file.
+# discover_host / validator_host default to the in-chart Services when not set.
+config:
+  country_code: "SK"
+  peppol_identifier: "0242:SEATID"
+  peppol_certificate: "/etc/ion-c5/peppol/certificate.pem"
+  peppol_private_key: "/etc/ion-c5/peppol/private.key"
+  log_level: "INFO"
+  discover_network: "peppol-test"
+  main_db_type: "oracle"
+  main_db_user: "c5main"
+  main_db_host: "db.example.local"
+  main_db_name: "?service_name=C5MAIN"
+  receiver_db_type: "oracle"
+  receiver_db_user: "c5recv"
+  receiver_db_host: "db.example.local"
+  receiver_db_name: "?service_name=C5RECV"
+  tdd_db_type: "oracle"
+  tdd_db_user: "c5tdd"
+  tdd_db_host: "db.example.local"
+  tdd_db_name: "?service_name=C5TDD"
+  # IPs of proxies/LBs in front of the receiver (comma-separated) so that
+  # X-Forwarded-For is trusted and the original sender IP is stored correctly.
+  receiver_proxy_ip_addresses: ""
+  processor_batch_size: 10
+  processor_idle_wait_seconds: 3
+  processor_workers: 1
+  receiver_workers: 1
+  sender_batch_size: 10
+  sender_idle_wait_seconds: 3
+  sender_workers: 1
+  admin_workers: 1
+  admin_disable_secure_cookies: "False"
+
+# Database initialization (ion-c5-setup initialize-databases) as a Helm hook Job.
+# NOTE: idempotency on upgrades is not yet confirmed by the supplier —
+# runOnUpgrade stays false until that is documented.
+setup:
+  enabled: true
+  runOnUpgrade: false
+  image:
+    repository: ion-c5-setup
+    tag: 1.0.0b1
+  backoffLimit: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Container hardening. readOnlyRootFilesystem stays false until the supplier
+# confirms the modules write only to /tmp (fit-gap item P1-4); /tmp is an
+# emptyDir in every pod already.
+securityContext:
+  readOnlyRootFilesystem: false
+
+terminationGracePeriodSeconds: 60
+
+# Optional baseline NetworkPolicies (default-deny ingress + router/same-namespace allows).
+networkPolicy:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# Per-module settings. The keys listenPortEnv / configFileEnv / useAppSecret /
+# peppolCert encode module wiring from the Administrator's Manual — do not
+# change them per environment.
+# Probes: health endpoints are not documented by the supplier (fit-gap P1-1);
+# until then receiver/admin/docval use TCP probes, discover uses GET /v2, and
+# processor/sender have probes DISABLED (queue pollers, no confirmed listener).
+# ---------------------------------------------------------------------------
+components:
+  # Every component image also accepts an optional `digest` (e.g.
+  # digest: "sha256:abc..."), which takes precedence over `tag`.
+  # Use digest pinning in PREPROD/PROD (COTS supply-chain control, fit-gap §4a).
+  receiver:
+    enabled: true
+    image:
+      repository: ion-c5-receiver
+      tag: 1.0.0b1
+    replicas: 2
+    containerPort: 8080
+    listenPortEnv: ION_C5_RECEIVER_LISTEN_PORT
+    configFileEnv: ION_C5_RECEIVER_CONFIG_FILE
+    useAppSecret: true
+    peppolCert: true
+    env: {}
+    service:
+      enabled: true
+    probes:
+      enabled: true
+      type: tcp
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    route:
+      enabled: true
+      # Public AS4 hostname (SMP publishes https://<host>/as4) — set per environment.
+      host: ""
+      tlsTermination: edge
+      annotations: {}
+    hpa:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 75
+    pdb:
+      enabled: true
+      minAvailable: 1
+
+  processor:
+    enabled: true
+    image:
+      repository: ion-c5-processor
+      tag: 1.0.0b1
+    replicas: 1
+    containerPort: null
+    listenPortEnv: null
+    configFileEnv: ION_C5_PROCESSOR_CONFIG_FILE
+    useAppSecret: true
+    peppolCert: false
+    env: {}
+    service:
+      enabled: false
+    probes:
+      enabled: false
+      type: tcp
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+    hpa:
+      enabled: false
+    pdb:
+      enabled: false
+
+  sender:
+    enabled: true
+    image:
+      repository: ion-c5-sender
+      tag: 1.0.0b1
+    replicas: 1
+    containerPort: null
+    listenPortEnv: null
+    configFileEnv: ION_C5_SENDER_CONFIG_FILE
+    useAppSecret: true
+    peppolCert: true
+    env: {}
+    service:
+      enabled: false
+    probes:
+      enabled: false
+      type: tcp
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+    hpa:
+      enabled: false
+    pdb:
+      enabled: false
+
+  admin:
+    enabled: true
+    image:
+      repository: ion-c5-admin
+      tag: 1.0.0b1
+    replicas: 1
+    containerPort: 8080
+    listenPortEnv: ION_C5_ADMIN_LISTEN_PORT
+    configFileEnv: ION_C5_ADMIN_CONFIG_FILE
+    useAppSecret: true
+    peppolCert: false
+    env: {}
+    service:
+      enabled: true
+    probes:
+      enabled: true
+      type: tcp
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    route:
+      enabled: true
+      # Internal admin hostname — set per environment. Access MUST be IP-restricted:
+      host: ""
+      tlsTermination: edge
+      annotations: {}
+      #   haproxy.router.openshift.io/ip_whitelist: "10.0.0.0/8 192.168.1.0/24"
+    hpa:
+      enabled: false
+    pdb:
+      enabled: false
+
+  discover:
+    enabled: true
+    image:
+      repository: ion-discover
+      tag: 1.0.0
+    replicas: 1
+    containerPort: 8080
+    listenPortEnv: ION_DISCOVER_LISTEN_PORT
+    configFileEnv: null
+    useAppSecret: false
+    peppolCert: false
+    env: {}
+    service:
+      enabled: true
+    probes:
+      enabled: true
+      type: http
+      httpPath: /v2
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    hpa:
+      enabled: false
+    pdb:
+      enabled: false
+
+  docval:
+    enabled: true
+    image:
+      repository: ion-docval
+      tag: 1.3.0
+    replicas: 1
+    containerPort: 8080
+    listenPortEnv: ION_DOCVAL_LISTEN_PORT
+    configFileEnv: null
+    useAppSecret: false
+    peppolCert: false
+    env: {}
+    service:
+      enabled: true
+    probes:
+      enabled: true
+      type: tcp
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+    hpa:
+      enabled: false
+    pdb:
+      enabled: false

@@ -1,0 +1,24 @@
+{{- $root := . -}}
+{{- range $name, $comp := .Values.components }}
+{{- if and $comp.enabled $comp.service $comp.service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ion-c5.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "ion-c5.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "ion-c5.name" $root }}
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/component: {{ $name }}
+{{- end }}
+{{- end }}
