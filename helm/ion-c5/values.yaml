@@ -1,4 +1,4 @@
-# Default values for ion-c5.
+# Default values for ion-c5 — targets delivery 1.0.0b2.
 # Environment-specific overrides belong in values-<env>.yaml (see values-test.yaml).
 # No value in this file may be environment-specific.
 
@@ -28,8 +28,10 @@ secrets:
 # Non-sensitive runtime configuration rendered into a ConfigMap as config.ini
 # and mounted read-only at /etc/ion-c5/config.ini in all ion-c5-* modules.
 # Passwords / JWT secret are intentionally ABSENT here — they arrive as env vars
-# from secrets.appSecretName and env vars override the config file.
-# discover_host / validator_host default to the in-chart Services when not set.
+# from secrets.appSecretName and env vars override the config file (manual §6.1).
+# discover_host / validator_host default to the in-chart Services when not set;
+# discover_port / validator_port default to 80 (the Service port — NOT the manual's
+# module default 8080, because in-cluster traffic goes through the Services).
 config:
   country_code: "SK"
   peppol_identifier: "0242:SEATID"
@@ -62,15 +64,22 @@ config:
   admin_workers: 1
   admin_disable_secure_cookies: "False"
 
-# Database initialization (ion-c5-setup initialize-databases) as a Helm hook Job.
-# NOTE: idempotency on upgrades is not yet confirmed by the supplier —
-# runOnUpgrade stays false until that is documented.
+# Database initialization (ion-c5-setup) as Helm hook Jobs.
+# - initialize-databases is IDEMPOTENT (manual §5.1: checks version tables, no-ops
+#   if present), so runOnUpgrade is safe; it does NOT migrate existing schemas.
+# - Schema migrations on upgrades use `ion-c5-setup migrate <db> latest`
+#   (manual §5.1.2). migrateOnUpgrade renders a pre-upgrade Job doing exactly that.
+#   Default OFF: take DB backups first and confirm the <db> argument names with
+#   the supplier (see HELM-CHART-GAP-ANALYSIS.md) before enabling.
 setup:
   enabled: true
   runOnUpgrade: false
+  migrateOnUpgrade: false
+  # Databases passed to `migrate <db> latest`, in order:
+  migrateDatabases: ["main", "receiver", "tdd"]
   image:
     repository: ion-c5-setup
-    tag: 1.0.0b1
+    tag: 1.0.0b2
   backoffLimit: 1
   resources:
     requests:
@@ -80,11 +89,15 @@ setup:
       cpu: 500m
       memory: 512Mi
 
-# Container hardening. readOnlyRootFilesystem stays false until the supplier
-# confirms the modules write only to /tmp (fit-gap item P1-4); /tmp is an
-# emptyDir in every pod already.
+# Container hardening.
+# - readOnlyRootFilesystem stays false until the supplier attests writable paths
+#   (fit-gap; PyInstaller onedir + Java suggest /tmp-only, already an emptyDir).
+# - runAsUser: images declare the NAMED user "c5" (uid 1000). On OpenShift leave
+#   null (restricted-v2 injects a namespace-range UID). On platforms that enforce
+#   runAsNonRoot against the image user (vanilla k8s), set 1000 explicitly.
 securityContext:
   readOnlyRootFilesystem: false
+  runAsUser: null
 
 terminationGracePeriodSeconds: 60
 
@@ -96,9 +109,13 @@ networkPolicy:
 # Per-module settings. The keys listenPortEnv / configFileEnv / useAppSecret /
 # peppolCert encode module wiring from the Administrator's Manual — do not
 # change them per environment.
-# Probes: health endpoints are not documented by the supplier (fit-gap P1-1);
-# until then receiver/admin/docval use TCP probes, discover uses GET /v2, and
-# processor/sender have probes DISABLED (queue pollers, no confirmed listener).
+# Probes (manual ch. 8, delivery 1.0.0b2): every runtime module serves
+#   GET /health/startup   (503 while starting, then 200)
+#   GET /health/ready     (dependency checks: DBs, docval, discover)
+#   GET /health/liveness  (always 200 while running)
+#   GET /version          ({"name":..., "version":...})
+# on its listen port. Paths are overridable per component (probes.startupPath /
+# readinessPath / livenessPath); set probes.type=tcp as a fallback.
 # ---------------------------------------------------------------------------
 components:
   # Every component image also accepts an optional `digest` (e.g.
@@ -108,7 +125,7 @@ components:
     enabled: true
     image:
       repository: ion-c5-receiver
-      tag: 1.0.0b1
+      tag: 1.0.0b2
     replicas: 2
     containerPort: 8080
     listenPortEnv: ION_C5_RECEIVER_LISTEN_PORT
@@ -120,7 +137,7 @@ components:
       enabled: true
     probes:
       enabled: true
-      type: tcp
+      type: http
     resources:
       requests:
         cpu: 250m
@@ -147,10 +164,12 @@ components:
     enabled: true
     image:
       repository: ion-c5-processor
-      tag: 1.0.0b1
+      tag: 1.0.0b2
     replicas: 1
-    containerPort: null
-    listenPortEnv: null
+    # Health-check-only listener (manual §6.8: processor_listen_port,
+    # "only used for health checks") — no Service needed, probes go to the pod.
+    containerPort: 8080
+    listenPortEnv: ION_C5_PROCESSOR_LISTEN_PORT
     configFileEnv: ION_C5_PROCESSOR_CONFIG_FILE
     useAppSecret: true
     peppolCert: false
@@ -158,8 +177,8 @@ components:
     service:
       enabled: false
     probes:
-      enabled: false
-      type: tcp
+      enabled: true
+      type: http
     resources:
       requests:
         cpu: 250m
@@ -176,10 +195,11 @@ components:
     enabled: true
     image:
       repository: ion-c5-sender
-      tag: 1.0.0b1
+      tag: 1.0.0b2
     replicas: 1
-    containerPort: null
-    listenPortEnv: null
+    # Health-check-only listener (manual §6.8) — no Service needed.
+    containerPort: 8080
+    listenPortEnv: ION_C5_SENDER_LISTEN_PORT
     configFileEnv: ION_C5_SENDER_CONFIG_FILE
     useAppSecret: true
     peppolCert: true
@@ -187,8 +207,8 @@ components:
     service:
       enabled: false
     probes:
-      enabled: false
-      type: tcp
+      enabled: true
+      type: http
     resources:
       requests:
         cpu: 250m
@@ -205,7 +225,7 @@ components:
     enabled: true
     image:
       repository: ion-c5-admin
-      tag: 1.0.0b1
+      tag: 1.0.0b2
     replicas: 1
     containerPort: 8080
     listenPortEnv: ION_C5_ADMIN_LISTEN_PORT
@@ -217,7 +237,7 @@ components:
       enabled: true
     probes:
       enabled: true
-      type: tcp
+      type: http
     resources:
       requests:
         cpu: 250m
@@ -241,7 +261,7 @@ components:
     enabled: true
     image:
       repository: ion-discover
-      tag: 1.0.0
+      tag: 1.0.1
     replicas: 1
     containerPort: 8080
     listenPortEnv: ION_DISCOVER_LISTEN_PORT
@@ -251,10 +271,12 @@ components:
     env: {}
     service:
       enabled: true
+    # Manual ch. 8 states all modules serve /health/*; the in-image config has
+    # enable_health_api=true. VERIFY the exact paths in TEST — fallback:
+    #   probes: { type: http, readinessPath: /v2, livenessPath: /v2, startupPath: /v2 }
     probes:
       enabled: true
       type: http
-      httpPath: /v2
     resources:
       requests:
         cpu: 250m
@@ -271,19 +293,25 @@ components:
     enabled: true
     image:
       repository: ion-docval
-      tag: 1.3.0
+      tag: 1.3.1
     replicas: 1
     containerPort: 8080
     listenPortEnv: ION_DOCVAL_LISTEN_PORT
     configFileEnv: null
     useAppSecret: false
     peppolCert: false
+    # Java (OpenJDK 21). No JVM sizing guidance from the supplier yet — the JRE
+    # defaults to 25% of the container memory limit for heap; raise via e.g.:
+    #   env: { JDK_JAVA_OPTIONS: "-XX:MaxRAMPercentage=60" }
+    # after confirming with the supplier (HELM-CHART-GAP-ANALYSIS.md).
     env: {}
     service:
       enabled: true
+    # In-image config has EnableHealthEndpoints=true; VERIFY /health/* paths in
+    # TEST (fallback: type: tcp) — see HELM-CHART-GAP-ANALYSIS.md.
     probes:
       enabled: true
-      type: tcp
+      type: http
     resources:
       requests:
         cpu: 250m

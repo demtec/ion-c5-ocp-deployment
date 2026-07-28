@@ -14,6 +14,9 @@ Next steps:
 3. Smoke tests (from a pod in the namespace):
      curl http://{{ include "ion-c5.fullname" . }}-discover/v2
      curl http://{{ include "ion-c5.fullname" . }}-discover/v2/peppol-test/0106:84418745
+   Version + readiness of every module (Services on port 80; processor/sender via pod IP:8080):
+     curl http://{{ include "ion-c5.fullname" . }}-admin/version
+     curl http://{{ include "ion-c5.fullname" . }}-admin/health/ready
 
 4. Routes:
 {{- range $name, $comp := .Values.components }}

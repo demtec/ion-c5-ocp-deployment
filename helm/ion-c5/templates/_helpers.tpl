@@ -33,15 +33,24 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 {{/*
 Rendered config.ini shared by the runtime ConfigMap and the setup-hook ConfigMap.
-discover_host / validator_host default to the in-chart Services (port 80).
+discover_host / validator_host default to the in-chart Services, and
+discover_port / validator_port default to 80 (the Service port). The explicit
+port defaults are REQUIRED: since 1.0.0b2 the application-side defaults are
+8080 (manual §6.8), which would bypass the Services and fail.
 */}}
 {{- define "ion-c5.configIni" -}}
 {{- $cfg := deepCopy .Values.config -}}
 {{- if not (hasKey $cfg "discover_host") -}}
 {{- $_ := set $cfg "discover_host" (printf "%s-discover" (include "ion-c5.fullname" .)) -}}
 {{- end -}}
+{{- if not (hasKey $cfg "discover_port") -}}
+{{- $_ := set $cfg "discover_port" 80 -}}
+{{- end -}}
 {{- if not (hasKey $cfg "validator_host") -}}
 {{- $_ := set $cfg "validator_host" (printf "%s-docval" (include "ion-c5.fullname" .)) -}}
+{{- end -}}
+{{- if not (hasKey $cfg "validator_port") -}}
+{{- $_ := set $cfg "validator_port" 80 -}}
 {{- end -}}
 [c5]
 {{- range $k, $v := $cfg }}

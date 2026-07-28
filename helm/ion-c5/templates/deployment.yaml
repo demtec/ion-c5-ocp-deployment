@@ -34,6 +34,9 @@ spec:
       {{- end }}
       securityContext:
         runAsNonRoot: true
+        {{- if $root.Values.securityContext.runAsUser }}
+        runAsUser: {{ $root.Values.securityContext.runAsUser }}
+        {{- end }}
         seccompProfile:
           type: RuntimeDefault
       terminationGracePeriodSeconds: {{ $root.Values.terminationGracePeriodSeconds }}
@@ -75,10 +78,12 @@ spec:
                 name: {{ $root.Values.secrets.appSecretName }}
           {{- end }}
           {{- if $comp.probes.enabled }}
+          {{- /* Endpoints per manual ch. 8 (1.0.0b2): /health/startup, /health/ready,
+               /health/liveness on the module listen port. Paths overridable. */}}
           startupProbe:
             {{- if eq $comp.probes.type "http" }}
             httpGet:
-              path: {{ $comp.probes.httpPath | default "/" }}
+              path: {{ $comp.probes.startupPath | default "/health/startup" }}
               port: http
             {{- else }}
             tcpSocket:
@@ -89,19 +94,21 @@ spec:
           readinessProbe:
             {{- if eq $comp.probes.type "http" }}
             httpGet:
-              path: {{ $comp.probes.httpPath | default "/" }}
+              path: {{ $comp.probes.readinessPath | default "/health/ready" }}
               port: http
             {{- else }}
             tcpSocket:
               port: http
             {{- end }}
             periodSeconds: 10
-            timeoutSeconds: 3
+            {{- /* /health/ready runs real dependency checks (DB queries) — allow
+                 more time than a trivial ping (manual: "may react slower"). */}}
+            timeoutSeconds: 5
             failureThreshold: 3
           livenessProbe:
             {{- if eq $comp.probes.type "http" }}
             httpGet:
-              path: {{ $comp.probes.httpPath | default "/" }}
+              path: {{ $comp.probes.livenessPath | default "/health/liveness" }}
               port: http
             {{- else }}
             tcpSocket:
