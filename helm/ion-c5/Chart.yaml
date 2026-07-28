@@ -6,7 +6,7 @@ description: >-
   ion-discover and ion-docval, plus database-initialization and schema-migration
   Jobs (ion-c5-setup).
 type: application
-version: 0.2.0
+version: 0.2.1
 appVersion: "1.0.0b2"
 keywords:
   - peppol

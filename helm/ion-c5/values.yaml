@@ -90,13 +90,15 @@ setup:
       memory: 512Mi
 
 # Container hardening.
-# - readOnlyRootFilesystem stays false until the supplier attests writable paths
-#   (fit-gap; PyInstaller onedir + Java suggest /tmp-only, already an emptyDir).
+# - readOnlyRootFilesystem: TRUE — supplier attested (email 2026-07-28) that b2
+#   writes nothing to disk (the CRL disk cache is auto-disabled on a read-only
+#   filesystem; CRLs are then held in memory and re-fetched after restarts).
+#   /tmp remains an emptyDir in every pod for the runtimes.
 # - runAsUser: images declare the NAMED user "c5" (uid 1000). On OpenShift leave
 #   null (restricted-v2 injects a namespace-range UID). On platforms that enforce
 #   runAsNonRoot against the image user (vanilla k8s), set 1000 explicitly.
 securityContext:
-  readOnlyRootFilesystem: false
+  readOnlyRootFilesystem: true
   runAsUser: null
 
 terminationGracePeriodSeconds: 60
@@ -271,8 +273,9 @@ components:
     env: {}
     service:
       enabled: true
-    # Manual ch. 8 states all modules serve /health/*; the in-image config has
-    # enable_health_api=true. VERIFY the exact paths in TEST — fallback:
+    # /health/* confirmed by supplier for all modules (email 2026-07-28;
+    # in-image config: enable_health_api=true). Quick TEST verification only.
+    # Fallback if needed:
     #   probes: { type: http, readinessPath: /v2, livenessPath: /v2, startupPath: /v2 }
     probes:
       enabled: true
@@ -307,8 +310,10 @@ components:
     env: {}
     service:
       enabled: true
-    # In-image config has EnableHealthEndpoints=true; VERIFY /health/* paths in
-    # TEST (fallback: type: tcp) — see HELM-CHART-GAP-ANALYSIS.md.
+    # /health/* confirmed by supplier (email 2026-07-28; in-image config:
+    # EnableHealthEndpoints=true). Supplier: docval is the slowest starter
+    # (~10 s, XSLT/XSD loading) — well within the 150 s startup budget.
+    # Fallback if needed: type: tcp.
     probes:
       enabled: true
       type: http

@@ -16,11 +16,12 @@ supplier sign-off pending — see `../../FIT-GAP-ANALYSIS.md` and `../../HELM-CH
 - **`discover_port` / `validator_port` are pinned to 80** in the rendered config (the
   Service port) — the application-side default is 8080 since b2 and would bypass the
   Services (see HELM-CHART-GAP-ANALYSIS.md G-3).
-- **HTTP health probes on all six modules** (b2 feature, manual ch. 8): startup
-  `/health/startup`, readiness `/health/ready` (real dependency checks), liveness
-  `/health/liveness`. Paths overridable per component (`probes.startupPath` /
-  `readinessPath` / `livenessPath`); `probes.type: tcp` as fallback. Verify
-  discover/docval paths on first TEST install (G-4).
+- **HTTP health probes on all six modules** (b2 feature, manual ch. 8; supplier-confirmed
+  for all modules incl. discover/docval): startup `/health/startup`, readiness
+  `/health/ready` (real dependency checks), liveness `/health/liveness`. Paths overridable
+  per component (`probes.startupPath` / `readinessPath` / `livenessPath`);
+  `probes.type: tcp` as fallback. Supplier timing guidance: modules start in seconds,
+  docval slowest (~10 s XSLT/XSD loading) — the 150 s startup budget is ample.
 - **Config split**: non-sensitive settings render into `config.ini` (ConfigMap, mounted
   read-only at `/etc/ion-c5/config.ini`); sensitive values arrive as env vars from a
   pre-created Secret. Env vars override the config file (manual §6.1), so the file never
@@ -28,8 +29,10 @@ supplier sign-off pending — see `../../FIT-GAP-ANALYSIS.md` and `../../HELM-CH
 - **Non-root**: images declare named user `c5` (uid 1000). On OpenShift leave
   `securityContext.runAsUser` null (SCC injects the UID); set `1000` on platforms that
   enforce `runAsNonRoot` against the image's non-numeric user (G-1).
-- `readOnlyRootFilesystem: false` until the supplier attests writable paths (`/tmp` is
-  already an emptyDir in every pod); flip `securityContext.readOnlyRootFilesystem` after (G-6).
+- **`readOnlyRootFilesystem: true` by default** — supplier attested (2026-07-28) that b2
+  writes nothing to disk; the CRL disk cache auto-disables on a read-only filesystem
+  (CRLs held in memory, re-fetched after restart — keep CRL egress open). `/tmp` stays
+  an emptyDir in every pod.
 
 ## Prerequisites
 
@@ -107,7 +110,7 @@ per module), then publish the receiver Route on the SMP.
 | `setup.enabled` / `setup.runOnUpgrade` | DB-init hook (idempotent per manual §5.1) |
 | `setup.migrateOnUpgrade` / `setup.migrateDatabases` | pre-upgrade schema-migration Job (default off, G-7) |
 | `securityContext.runAsUser` | null on OpenShift; `1000` on vanilla k8s (G-1) |
-| `securityContext.readOnlyRootFilesystem` | enable after supplier attests writable paths (G-6) |
+| `securityContext.readOnlyRootFilesystem` | `true` (supplier-attested, b2); set `false` only when debugging |
 | `networkPolicy.enabled` | baseline default-deny ingress policies |
 
 GitOps: Argo CD-compatible (hooks map to Argo PreSync; no Helm lookups or random values used).

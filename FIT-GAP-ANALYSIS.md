@@ -1,7 +1,7 @@
 # Fit-Gap Analysis — ion-C5 delivery vs. „Požiadavky na dodávku C5" (OCP requirements)
 
 **Date:** 2026-07-28 (rev. 2 — supersedes rev. 1 of 2026-07-24)
-**Analyzed delivery:** ion-C5 **1.0.0b2** (images `1.0.0b2`, ion-discover `1.0.1`, ion-docval `1.3.1`), Administrator's Manual 1.0.0b2-1, `sample_config.ini`
+**Analyzed delivery:** ion-C5 **1.0.0b2** (images `1.0.0b2`, ion-discover `1.0.1`, ion-docval `1.3.1`), Administrator's Manual 1.0.0b2-1, `sample_config.ini`, **supplier gap-response email 2026-07-28** (cross-checked against the artifacts — claims verified)
 **Reference:** Zadanie pre dodávateľa – dodávka kontajnerizovanej aplikácie pre OpenShift (chapters 1–15 + acceptance criteria)
 **Companions:** [RESPONSIBILITIES.md](RESPONSIBILITIES.md) (who owns what), [HELM-CHART-GAP-ANALYSIS.md](HELM-CHART-GAP-ANALYSIS.md) (chart-boundary specialties G-1…G-18)
 
@@ -18,17 +18,26 @@ The 1.0.0b2 delivery **closes the worst gaps of b1**. Newly delivered and verifi
 - **Per-module memory sizing table** in the manual (chart resource values now match it).
 - Partial **OCI labels** and the build **Dockerfile shipped inside each image** (good transparency).
 
+**Additionally settled by the supplier's gap-response email (2026-07-28):**
+
+- **Writable-paths attestation delivered**: the CRL disk cache was the only disk writer; b2 disables it on read-only filesystems and "there are no other writes to disk" → chart 0.2.1 runs with **`readOnlyRootFilesystem: true`** (G-6 closed in substance).
+- Probe endpoints confirmed for **all** modules incl. discover/docval, with timing guidance (start "within seconds", docval ~10 s worst) (G-4/G-5).
+- Migration mechanics clarified: per-DB, **order admin-defined**, up/down, no-op at target, all schemas at v1 — nothing to migrate yet (G-7 core).
+- Tagging scheme stated: `bN` until feature-complete, then `1.0.0`; **Prometheus metrics explicitly committed before the 1.0.0 tag** (G-12).
+- SBOM in progress (in-image dependency list → standard format) + Python CVE tooling + patch willingness (§4a materializing); supplier floated a **binaries-instead-of-images** delivery option — strategically interesting for base-image CVE patching, keep on the contract agenda.
+- Informal chart review: "not seeing anything that seems wrong" — to be upgraded to formal per-release sign-off (G-13).
+
 **Still open — the delivery does not yet meet PROD acceptance:**
 
-1. **No Prometheus metrics** (chapter 8) — the queue depths that should drive HPA and alerting exist only in the DB/admin UI (G-12).
-2. **No changelog/release notes** — and b2 proved why this matters: defaults changed 80→8080 silently and would have broken in-cluster service wiring had the chart not pinned ports (G-3).
-3. **Upgrade *procedure* still undocumented** (migrate db-names, ordering, rollback compatibility — G-7) although the mechanism now exists.
-4. **restricted-v2 attestation still missing**: named (non-numeric) user without group-0 file permissions works on OCP only via SCC UID injection (G-1); writable paths unattested; "persistent storage" for TDDs still unmapped (G-6) — blocks `readOnlyRootFilesystem` and storage/backup planning.
-5. **Beta tags again** (`1.0.0b2`), plus dev-build remnants in the sender image (G-14) — not release-grade.
-6. **COTS image-only delivery** — unchanged position: formal exception + §4a compensating controls; SBOM still not delivered.
-7. `create-admin-user` still interactive-only (G-8); graceful shutdown still unstated (G-9).
+1. **No Prometheus metrics yet** (chapter 8) — committed for 1.0.0; until then queue depths exist only in DB/admin UI (G-12 interim plan).
+2. **No formal changelog/release notes artifact** — the email's "other changes" list is a de-facto changelog and caught the 80→8080 default change, but this must become a versioned delivery document, not correspondence (G-3, P1-1).
+3. **Upgrade *procedure* residuals**: exact `migrate <db>` names, app-vs-schema rollback compatibility once real migrations exist (G-7).
+4. **Named (non-numeric) `USER c5`** without group-0 file permissions — works on OCP via SCC UID injection, but the numeric-USER fix + formal restricted-v2 attestation remain open; **the one P1-class item the email did not address** (G-1).
+5. **Beta tags** (deliberate, documented) + dev-build remnants in the sender image (G-14) — release-grade builds required for acceptance.
+6. **COTS image-only delivery** — formal exception + §4a controls still to be contractualized; SBOM promised, not yet delivered.
+7. `create-admin-user` still interactive-only (G-8); graceful shutdown still unstated (G-9); TDD-persists-in-DB sentence still owed for backup scope (G-6 residual).
 
-Verdict: **ready for TEST/INT installation now** (chart 0.2.0, real probes, idempotent init). **PROD acceptance** still requires: metrics, release notes + release-grade tags, upgrade procedure, restricted-v2/writable-path attestation, and the §4a supply-chain package.
+Verdict: **ready for TEST/INT installation now** (chart 0.2.1: real probes, read-only rootfs, idempotent init). **PROD acceptance** still requires: metrics delivered, formal release notes, release-grade tags + clean builds, numeric-USER/restricted-v2 attestation (G-1), and the §4a supply-chain package.
 
 ---
 
@@ -68,7 +77,7 @@ Status legend: ✅ **Fit** · 🟡 **Partial** · ❌ **Gap** · ❓ **Verify** 
 | No root / no privileged / no host* | ✅⬆️ | Non-root user declared; nothing needs privileges |
 | No hardcoded config/certs/credentials | ✅ | Config externalized; sample uses placeholders; discover/docval ship benign default configs in-image |
 | Logs exclusively to stdout/stderr | ✅ | Confirmed (manual §6; no file paths anywhere) |
-| Writes only to /tmp or defined mounts | ❓ | Still unattested; PyInstaller onedir suggests no /tmp extraction; TDD "persistent storage" unmapped (G-6) — blocks readOnlyRootFilesystem |
+| Writes only to /tmp or defined mounts | ✅⬆️ | **Attested by email 2026-07-28**: CRL disk cache (the only writer) auto-disabled on read-only fs; "no other writes to disk". Chart runs `readOnlyRootFilesystem: true`. Residual: fold into manual + explicit TDD-in-DB sentence (G-6) |
 | State app+image version, runtime, base image, tagging scheme | 🟡⬆️ | `/version` endpoint added ✅; partial OCI labels ✅; runtime (Python 3.13/Java 21) and base still undocumented in the manual; beta tagging scheme unexplained ❌ |
 
 ### Chapter 3 — Deployment (Helm)
@@ -104,7 +113,7 @@ Status legend: ✅ **Fit** · 🟡 **Partial** · ❌ **Gap** · ❓ **Verify** 
 
 | Requirement | Status | Comment |
 |---|---|---|
-| startup / readiness / liveness endpoints with URL, port, codes | ✅⬆️ **(major)** | Manual ch. 8: `/health/startup` (503→200), `/health/ready` (dependency checks incl. per-component `latency_ms`), `/health/liveness`, `/version` — all modules except setup, on the listen port (8080). Processor/sender run health-only listeners. Chart uses HTTP probes for all 6. **Residual:** paths on discover/docval to verify in TEST (G-4); recommended probe timings not stated (G-5) |
+| startup / readiness / liveness endpoints with URL, port, codes | ✅⬆️ **(major)** | Manual ch. 8 + email: `/health/startup` (503→200), `/health/ready` (dependency checks incl. per-component `latency_ms`), `/health/liveness`, `/version` — **confirmed for all modules** incl. discover/docval, on the listen port (8080). Processor/sender run health-only listeners. Chart uses HTTP probes for all 6. Timing guidance per email: startup in seconds, docval ~10 s worst (G-5) — manual section still to be added |
 
 ### Chapter 8 — Monitoring, logging, observability
 
@@ -128,7 +137,7 @@ Status legend: ✅ **Fit** · 🟡 **Partial** · ❌ **Gap** · ❓ **Verify** 
 
 | Requirement | Status | Comment |
 |---|---|---|
-| Writable dirs, PV, S3 | ❓ | "Persistent storage" for TDDs still unmapped — **the key unwritten sentence of the delivery** (G-6) |
+| Writable dirs, PV, S3 | ✅⬆️ | No PV/S3 needed: "no writes to disk" attested (email); TDD documents implied DB-only — one explicit manual sentence still owed for backup scope (G-6 residual) |
 | DB timeouts, retry | 🟡 | Sender exponential backoff (`schedule_at`, `attempts`, attempt limit + last-error persistence) documented ⬆️; DB timeout behavior still not |
 | Behavior on external outage | 🟡 | Queue semantics + AS4 error codes (EBMS:0004/0101/0102) now documented ⬆️ |
 | Graceful shutdown + terminationGracePeriodSeconds | ❌ | Still nothing (G-9); chart keeps conservative 60 s |
@@ -138,13 +147,13 @@ Status legend: ✅ **Fit** · 🟡 **Partial** · ❌ **Gap** · ❓ **Verify** 
 
 | Requirement | Status | Comment |
 |---|---|---|
-| Versioning, upgrade procedure, zero-downtime, order, migrations, rollback | 🟡⬆️ | **Mechanism delivered:** idempotent `initialize-databases`; per-DB schema versions; `migrate <db> <version|latest>` up **and down**. **Procedure still missing:** db argument names, migrate-vs-rollout ordering, vN-1-app-on-vN-schema compatibility, component update order (G-7). Chart ships opt-in pre-upgrade migrate Job |
+| Versioning, upgrade procedure, zero-downtime, order, migrations, rollback | 🟡⬆️ | **Mechanism delivered + clarified by email:** idempotent `initialize-databases`; per-DB schema versions; `migrate <db> <version|latest>` up **and down**; order admin-defined; schemas all at v1 (nothing to migrate yet). **Residual:** `<db>` argument spelling in the manual; app-vs-schema rollback compatibility once real migrations ship (G-7). Chart ships opt-in pre-upgrade migrate Job |
 
 ### Chapter 13 — Security
 
 | Requirement | Status | Comment |
 |---|---|---|
-| restricted mode, no capabilities, no privileged | 🟡⬆️ | Expected pass (non-root user, 8080, drop ALL in chart); formal attestation outstanding (G-1) |
+| restricted mode, no capabilities, no privileged | 🟡⬆️ | Expected pass (non-root user, 8080, drop ALL, read-only rootfs in chart); writable-paths half attested (email); numeric-USER fix + formal restricted-v2 statement outstanding (G-1) |
 | Secret rotation without rebuild | ✅ | Secret update + rolling restart |
 | Runtime certificate configuration | ✅ | PEM path/inline or PKCS#12 (`.pfx`/`.p12` auto-detected); password via env |
 | Admin UI hardening | ✅⬆️ | **MFA (TOTP)** added; JWT secure cookies; forced password change; view-only UI. Note: local accounts only (no LDAP/OIDC); permissions system exists but is not exposed in this version |
@@ -163,36 +172,36 @@ Status legend: ✅ **Fit** · 🟡 **Partial** · ❌ **Gap** · ❓ **Verify** 
 |---|---|---|
 | Technical description, config & ENV docs | ✅⬆️ | Manual improved (config catalogue, health chapter, AS4 error semantics, sizing table) |
 | Secrets/health/network/metrics/ops/upgrade docs | 🟡⬆️ | Health ✅, sizing ✅, network 🟡, upgrade 🟡 (mechanism only), metrics ❌, backup ❌ |
-| Release notes / changelog | ❌ | **Still none — and b2's silent 80→8080 default change demonstrated the cost (G-3)** |
+| Release notes / changelog | 🟡⬆️ | Email contains a de-facto changelog ("other changes" incl. the 80→8080 default change and 4 new config options) — content exists, must become a versioned delivery artifact (P1-1) |
 | Source-code delivery preference | 🟡 exception | Unchanged: COTS image-only exception + §4a controls; formalize in writing |
 
 ---
 
 ## 4. Prioritized gap register (supplier action list) — rev. 2
 
-Closed since rev. 1: ~~P1-1 health endpoints~~ ✅ (residual: G-4 path verification on discover/docval) · ~~P1-6 version identification~~ ✅ (`/version`) · ~~P3-15 idempotency of initialize-databases~~ ✅ (+ `migrate`) · memory sizing ✅.
+Closed since rev. 1: ~~P1-1 health endpoints~~ ✅ (all modules, email-confirmed) · ~~P1-6 version identification~~ ✅ (`/version` + startup log line) · ~~P3-15 idempotency of initialize-databases~~ ✅ (+ `migrate`) · ~~P1-4 writable paths~~ ✅ (attested; read-only rootfs enabled) · memory sizing ✅ · probe timing guidance 🟡 (email figures; manual section pending).
 
 **P1 — acceptance blockers (PROD):**
-1. **Release notes/changelog per release**, including every changed default (b2 changed listen-port defaults silently — G-3). *(was P2)*
-2. Helm chart: formally approve customer chart 0.2.0 as the supported deployment (G-13).
-3. **Upgrade procedure**: `migrate` db-names, ordering contract (migrate→rollout?), rollback/schema compatibility, component update order (G-7).
-4. **restricted-v2 attestation + writable paths** (target `readOnlyRootFilesystem: true`); numeric `USER 1000` + group-0 permissions in images (G-1); TDD "persistent storage" mapping — DB-only confirmation (G-6).
-5. Release-grade tags for the acceptance version (no `bN`), clean builds (no `.dev` remnants), populated OCI labels, digest list (G-14, §4a).
+1. **Release notes/changelog as a versioned delivery artifact**, including every changed default (b2 changed listen-port defaults silently — G-3; the email's "other changes" list shows the content exists — ship it as a document).
+2. Helm chart: upgrade the email's informal review to **formal per-release sign-off** of customer chart 0.2.1 (G-13).
+3. **Upgrade procedure residuals**: `migrate <db>` argument spelling in the manual; app-vs-schema rollback compatibility contract once real migrations exist (G-7).
+4. **Numeric `USER 1000` + group-0 permissions** in images and the consolidated restricted-v2 attestation (writable-paths half already delivered by email) (G-1, G-6).
+5. Release-grade tags for the acceptance version (scheme now documented: `bN` → `1.0.0` when feature-complete), clean builds (no `.dev` remnants), fix empty `created` label, digest list (G-14, §4a).
 
 **P2 — required for stable operations:**
-6. **Prometheus metrics**: queue depths (receive/send), dead-letter count, attempts, request counts/errors/latency; `/health/ready` already computes `latency_ms` per dependency — export it (G-12). Plus recommended alerts + thresholds.
+6. **Prometheus metrics** (committed by email for 1.0.0 — send the metric wishlist now): queue depths (receive/send), dead-letter count, attempts, request counts/errors/latency; `/health/ready` already computes `latency_ms` per dependency — export it (G-12). Plus recommended alerts + thresholds.
 7. Interim (customer-side, until 6 lands): supplier delivers the **reference SQL queries** for queue/dead-letter monitoring (they power the admin dashboard).
 8. Graceful-shutdown statement per module + recommended `terminationGracePeriodSeconds` (G-9).
-9. Probe timing guidance: worst-case startup (docval artifact load, receiver first CRL fetch), readiness cost under DB latency (G-5); confirm discover/docval probe paths (G-4).
+9. Probe timing section in the manual (email figures: startup in seconds, docval ~10 s worst — make them contractual) (G-5).
 10. Network matrix confirmation: CRL/OCSP URLs, SML zones, **max AS4 message size + exchange duration** for router/WAF limits (G-17).
-11. Log format specification + samples; backup/restore statement (DB-only expected, pending G-6).
+11. Log format specification + samples; backup/restore statement — one explicit sentence that TDD documents persist in the TDD DB only (implied by "no writes to disk", G-6 residual).
 12. ion-docval JVM sizing recommendation (`MaxRAMPercentage` or launcher default) (G-10).
 
 **P3 — contractual/process:**
-13. CVE/patch process + SLA; SBOM per release; OCP version compatibility commitment (§4a).
-14. Formalize the COTS image-only-delivery exception in writing (§4a).
+13. CVE/patch process + SLA; SBOM per release **in SPDX or CycloneDX** (email: extraction from in-image dependency lists in progress; Python CVE tooling exists); OCP version compatibility commitment (§4a).
+14. Formalize the COTS image-only-delivery exception in writing (§4a). **Evaluate the supplier's binaries-instead-of-images offer** as the long-term base-image CVE-patching model.
 15. Non-interactive `create-admin-user` (flags/env/stdin) for bootstrap automation (G-8); password-reset path documentation.
-16. Documentation errata batch (G-11); restart-required flags + types per config parameter; runtime/base-image statement in the manual.
+16. Documentation errata batch incl. `listen_address` vs `listen_host` from the email (G-11); restart-required flags + types per config parameter; runtime/base-image statement in the manual.
 17. mTLS/internal-TLS roadmap statement (G-15); LDAP/OIDC roadmap for admin UI; expose the already-implemented permissions system.
 
 ### §4a — Compensating controls for COTS image-only delivery
@@ -201,7 +210,7 @@ Since the customer cannot rebuild the images in its own CI/CD, the software-supp
 requirement is met through supplier obligations plus customer-side gates:
 
 **Supplier obligations (contractual):**
-1. **SBOM per image per release** (SPDX or CycloneDX) covering OS packages and application dependencies.
+1. **SBOM per image per release** (SPDX or CycloneDX) covering OS packages and application dependencies. *Progress per email 2026-07-28: in-image dependency lists exist; supplier extracting into a standard format — specify SPDX/CycloneDX in the reply.*
 2. **Digest-pinned releases** — a release manifest listing image name, tag and sha256 digest for every component; ideally images **signed** (cosign/Sigstore or registry-native signing) with a published public key.
 3. **CVE response SLA** — defined remediation times per severity (e.g. critical ≤ 7 days, high ≤ 30 days) for base image (Debian trixie) and bundled runtimes (Python 3.13 PyInstaller bundles, OpenJDK 21 in ion-docval); rebuilt patched images delivered as new tags, never overwritten tags.
 4. **Release notes/changelog** per version incl. security-fix identification and **changed defaults** (P1-1).
@@ -246,9 +255,12 @@ requirement is met through supplier obligations plus customer-side gates:
 
 ## 6. Open questions
 
-**For the supplier** — P1–P3 above; sharpest first: TDD persistence mapping (G-6), migrate
-db-names/ordering (G-7), discover/docval probe paths (G-4), release notes going forward (P1-1),
-runtime/base statement, max AS4 message size (G-17).
+**For the supplier** — P1–P3 above; sharpest first after the email: numeric `USER 1000` +
+group-0 permissions (G-1 — the one unanswered P1 item), release notes as a delivery artifact
+(P1-1), metric wishlist confirmation for the committed `/metrics` (G-12), TDD-in-DB sentence
+(G-6 residual), `migrate <db>` spelling + rollback compatibility (G-7), max AS4 message size
+(G-17), `listen_address`/`listen_host` discrepancy (G-11). Also answer DEV's open questions:
+**yes** to restoring `EXPOSE 8080`; additional OCI labels per G-2.
 
 **Customer-side decisions (status 2026-07-28):**
 1. ✅ Registry naming per plan (fill actual URL into `global.imageRegistry` in the env values files).

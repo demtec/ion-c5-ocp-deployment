@@ -153,11 +153,13 @@ OCP-team implementation problem.
 **Not OCP's/OPS's job:** guessing application facts. Health endpoints, writable paths,
 graceful-shutdown behavior, migration idempotency, scaling semantics, config-key meaning
 — if it isn't documented, it is a **DEV documentation gap** (fit-gap register), and any
-chart workaround (`readOnlyRootFilesystem: false`, guessed migrate db-names with the
-migrate Job default-off, guessed probe timing budgets, pinned `discover_port`/
-`validator_port`) is a *temporary mitigation attributable to that gap*, not an accepted
-design. The chart marks every such workaround with a fit-gap / G-item reference
-(see HELM-CHART-GAP-ANALYSIS.md).
+chart workaround (guessed migrate db-names with the migrate Job default-off, pinned
+`discover_port`/`validator_port`, `runAsUser` knob for the named-user issue) is a
+*temporary mitigation attributable to that gap*, not an accepted design. The chart marks
+every such workaround with a fit-gap / G-item reference (see HELM-CHART-GAP-ANALYSIS.md).
+Worked example of the boundary done right: the 2026-07-28 gap-response email — DEV supplied
+facts (probe timings, writes-to-disk attestation, migration semantics) and explicitly
+deferred YAML specifics to the platform team; those facts then flowed into chart 0.2.1.
 
 **Chart ownership:** OCP owns and versions the chart; DEV **reviews and formally approves**
 each chart release against its product knowledge (this approval is fit-gap P1-2). DEV's

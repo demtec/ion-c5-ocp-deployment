@@ -100,10 +100,11 @@ Expected dependency order if watching:
 oc get pods -w
 ```
 
-**First TEST install — probe-path verification (G-4):** if `ion-discover`/`ion-docval` pods
-stay NotReady with probe 404s, apply the documented fallback (discover:
-`probes.readinessPath=/v2` etc.; docval: `probes.type=tcp`) and report the actual paths to
-the supplier. This is expected to be the only manual intervention.
+Probe endpoints are supplier-confirmed for all modules (email 2026-07-28); the pods run
+with a **read-only root filesystem** (attested — the CRL disk cache auto-disables, so CRLs
+are re-fetched after every receiver restart: CRL egress must work at pod start). If
+discover/docval probes unexpectedly 404, documented fallbacks exist in values.yaml
+(discover: `probes.readinessPath=/v2`; docval: `probes.type=tcp`).
 
 ## Phase 6 — First administrator user (OPS; interactive, one-off — G-8)
 
@@ -151,7 +152,8 @@ Publish/update the SMP entry for `0242:<SEATID>` with endpoint `https://<receive
   supplier, P2-7). Synthetic AS4/SMP probe from outside.
 - **Log forwarding** (OCP): stdout → OCP logging stack; parsing once log format is specified (P2-11).
 - **Backups** (DBA): all three DBs; TDD DB carries the legally relevant documents — retention
-  accordingly. Confirm DB-only persistence (G-6) to close the backup scope.
+  accordingly. DB-only persistence is attested in substance ("no writes to disk", email
+  2026-07-28); one explicit TDD-in-DB sentence in the manual closes the backup scope (G-6).
 - **GitOps** (OCP): chart + env values in Git, Argo CD app-per-environment (tool decision
   pending); secrets via ESO/Sealed Secrets.
 - **Security** (SEC): decision on plaintext in-cluster hops (G-15: accept / IPsec / mesh);

@@ -6,32 +6,33 @@ These are the things that cause installs to fail or arguments to start; each ite
 owner of the *fact* and the owner of the *fix*.
 
 **Basis:** delivery 1.0.0b2 (images inspected layer-by-layer 2026-07-28), Administrator's
-Manual 1.0.0b2-1 (fully read), chart `helm/ion-c5/` 0.2.0.
+Manual 1.0.0b2-1 (fully read), chart `helm/ion-c5/` 0.2.1, **supplier email of 2026-07-28**
+(gap responses — cross-checked against the artifacts; statuses below reflect it).
 
-**Verdict up front:** with 1.0.0b2 the product is deployable on OpenShift under
-`restricted-v2` with real health probes — a major step vs. b1. The remaining specialties
-are: identity/permissions inside the images (G-1), unverified probe paths on the two
-standalone modules (G-4), unmapped "persistent storage" (G-6), migration semantics (G-7),
-and everything observability (G-12).
+**Verdict up front:** with 1.0.0b2 plus the supplier's written answers, the product is
+deployable on OpenShift under `restricted-v2` with real health probes and a **read-only
+root filesystem**. The remaining specialties are: identity/permissions inside the images
+(G-1), migration/rollback compatibility (G-7), observability (G-12 — supplier has committed
+to Prometheus metrics before 1.0.0), and the SEC decision on plaintext hops (G-15).
 
 ## Summary table
 
 | # | Specialty | Fact owner | Fix owner | Severity | Status |
 |---|---|---|---|---|---|
-| G-1 | Named `USER c5` vs. runAsNonRoot / arbitrary UID | DEV | DEV (image), OCP (workaround) | High | Open |
-| G-2 | No EXPOSE/port metadata in images | DEV | DEV | Low | Open |
-| G-3 | Silent default-port change 80→8080 broke in-cluster wiring | DEV | OCP (chart pins 80) | High | **Mitigated in chart** |
-| G-4 | Probe paths unverified on ion-discover / ion-docval | DEV | DEV confirm + OCP test | High | Open — verify in TEST |
-| G-5 | Probe timing budgets are guesses (worst-case startup unknown) | DEV | OCP | Medium | Open |
-| G-6 | "Persistent storage" for TDDs unmapped; readOnlyRootFilesystem blocked | DEV | DEV | High | Open |
-| G-7 | `migrate <db>` argument names + upgrade order unconfirmed | DEV | DEV | High | Open — chart guesses `main/receiver/tdd`, Job default-off |
+| G-1 | Named `USER c5` vs. runAsNonRoot / arbitrary UID | DEV | DEV (image), OCP (workaround) | High | Open (not addressed in email) |
+| G-2 | No EXPOSE/port metadata in images | DEV | DEV | Low | **Answer owed to DEV** — email offers to restore; recommend `EXPOSE 8080` |
+| G-3 | Silent default-port change 80→8080 broke in-cluster wiring | DEV | OCP (chart pins 80) | High | **Mitigated in chart**; release-notes ask stands |
+| G-4 | Probe paths on ion-discover / ion-docval | DEV | OCP quick test | ~~High~~ Low | **Confirmed by email** ("all modules"); routine TEST verify |
+| G-5 | Probe timing budgets | DEV | OCP | Low | **Largely answered**: start "within seconds", docval ~10 s worst; 150 s budget ample; manual section still to add |
+| G-6 | Writable paths / readOnlyRootFilesystem / TDD storage | DEV | DEV | ~~High~~ Low | **Attested**: CRL-write oversight fixed in b2, "no other writes to disk" → chart default now `readOnlyRootFilesystem: true`. Residual: explicit TDD=DB sentence for backup scope |
+| G-7 | `migrate` semantics | DEV | DEV | Medium | **Partially answered**: per-DB, order admin-defined, idempotent, up/down, nothing to migrate yet. Residual: exact `<db>` names + app-vs-schema rollback compatibility |
 | G-8 | `create-admin-user` interactive-only — not Job-able | DEV | DEV | Medium | Open |
 | G-9 | No graceful-shutdown/SIGTERM statement | DEV | DEV | Medium | Open |
 | G-10 | ion-docval JVM sizing undefined | DEV | DEV recommend, OCP set | Medium | Open |
-| G-11 | Documentation errata (env-var typo, db_type values, undocumented keys) | DEV | DEV | Medium | Open |
-| G-12 | No metrics ⇒ no queue-based HPA/alerting | DEV | DEV (product) / OPS+DBA (interim) | High | Open |
-| G-13 | Secret & config contract needs DEV sign-off | DEV+OCP | DEV approval | Medium | Open |
-| G-14 | Build hygiene: beta tags, dev remnants, single-arch | DEV | DEV | Medium | Open |
+| G-11 | Documentation errata | DEV | DEV | Medium | Open — **new item**: email says `*_listen_address`, manual says `*_listen_host` |
+| G-12 | No metrics ⇒ no queue-based HPA/alerting | DEV | DEV (product) / OPS+DBA (interim) | High | Open — **DEV committed: Prometheus metrics before 1.0.0 release** |
+| G-13 | Secret & config contract needs DEV sign-off | DEV+OCP | DEV approval | Medium | **Informal approval in email** ("not seeing anything that seems wrong"); formalize per chart release |
+| G-14 | Build hygiene: beta tags, dev remnants, labels | DEV | DEV | Medium | **Partially answered**: 4 OCI labels added, `bN`-until-feature-complete scheme stated, SBOM extraction in progress; residual: clean builds, empty `created` label, digest list |
 | G-15 | No TLS in modules; internal hops plaintext | DEV (fact) | SEC decision | Medium | Open |
 | G-16 | Kubelet probes vs. default-deny NetworkPolicy | — | OCP | Info | No action (OVN allows) |
 | G-17 | Route/AS4 limits: message size, router timeouts | DEV+NET | OCP/NET | Medium | Open |
@@ -55,18 +56,24 @@ with home `/home/c5`; app files under `/var/ion` are **not** group-0 owned and h
 
 **Ask of DEV (image fix, one line each):** `USER 1000` (numeric) and OpenShift file
 conventions: `chgrp -R 0 /var/ion && chmod -R g=u /var/ion` (same for any runtime-writable
-path). Plus a written attestation: "runs under arbitrary UID, writes only to X, Y".
+path). Plus a written attestation: "runs under arbitrary UID, writes only to X, Y" —
+the 2026-07-28 email delivered the writes-to-disk half (see G-6) but did not address the
+named-user/UID topic; it remains the one P1-class image item without a supplier response.
 
 **OCP meanwhile:** chart exposes `securityContext.runAsUser` (default null on OCP; set
 `1000` on platforms that enforce the numeric check). Do **not** pin 1000 on OpenShift —
 it would require an SCC exception for no benefit.
 
-## G-2 — No EXPOSE / port metadata (Low)
+## G-2 — No EXPOSE / port metadata (Low — answer owed to DEV)
 
-b1 images declared `EXPOSE 80`; b2 declares nothing. Harmless at runtime (k8s ignores
-EXPOSE) but it removes the last in-image signal of intended ports and confuses scanners
-and humans. Ask DEV: `EXPOSE 8080` + complete OCI labels (only `created/name/ref.name/
-version` are present; `created` is even empty in 6 of 7 images).
+b1 images declared `EXPOSE 80`; b2 declares nothing — the email confirms this was
+deliberate ("ports are configurable anyway") and offers to restore it. **Our answer: yes,
+please add `EXPOSE 8080`** — k8s ignores it at runtime, but it documents the default in
+the artifact itself and keeps scanners/humans oriented; since b2 every module has a web
+interface, one uniform port is now accurate. Labels: DEV asked "do we want additional
+labels?" — requested set: `org.opencontainers.image.revision` (build/commit),
+`…vendor`, `…licenses`, `…description`, `…base.name` + `…base.digest`; and fix the bug
+that `…created` is an **empty string in 6 of 7 b2 images** (only admin has it populated).
 
 ## G-3 — Silent default-port change 80→8080 (High — mitigated, but instructive)
 
@@ -78,53 +85,59 @@ config (`_helpers.tpl`), so this cannot regress. Lesson for the register: this i
 the class of break that the missing release notes (fit-gap P2) are supposed to prevent.
 DEV must list **every changed default** per release in the release manifest.
 
-## G-4 — Probe paths on ion-discover / ion-docval unverified (High until tested)
+## G-4 — Probe paths on ion-discover / ion-docval (downgraded to Low)
 
-Manual ch. 8 says *"All modules, except the ion-c5-setup tool, have version and health
-endpoints"* (`/health/{startup,ready,liveness}`, `/version`), and both standalone modules
-ship in-image config with health APIs enabled (`enable_health_api=true` in
-`/etc/ion-discover.conf`; `EnableHealthEndpoints=true` in `/etc/ion-docval.conf`). But the
-worked examples cover only the c5-* modules, and ion-discover/ion-docval are separate
-products with their own docs. **Risk:** wrong path ⇒ pods never Ready ⇒ install "fails"
-and the blame ping-pong starts.
+**Resolved by the supplier email**: health endpoints exist on all runtime modules
+("all modules now have a web interface"; discover 1.0.1 and docval 1.3.1 were bumped
+precisely "due to some additions for health and version"). In-image configs agree
+(`enable_health_api=true`, `EnableHealthEndpoints=true`). Residual: routine verification
+on first TEST install; fallbacks stay documented in `values.yaml` (discover `/v2`,
+docval `type: tcp`), and the paths remain per-component overridable.
 
-**Action:** first TEST install verifies `GET /health/ready` on both (fallbacks already
-documented in `values.yaml`: discover `/v2`, docval `type: tcp`; probe paths are
-per-component overridable). DEV confirms canonical paths + expected codes in writing.
+## G-5 — Probe timing budgets (downgraded to Low)
 
-## G-5 — Probe timing budgets are guesses (Medium)
+**Largely answered in the email**: modules start "within seconds"; ion-docval is the
+slowest (XSLT/XSD loading), ~10 s on reasonable cores. The supplier's semantic guidance
+matches the chart's wiring: `/health/liveness` = cheap is-it-running check,
+`/health/startup` = initialization complete, `/health/ready` = the slower
+dependency-checking endpoint. Chart budgets (startup ≤150 s at 30×5 s; readiness timeout
+5 s; liveness every 20 s) are comfortably above the stated worst case — keep them.
+Residual: DEV to add the timing section to the manual so the numbers are contractual,
+not email folklore; TEST measurements remain the tiebreaker (RESPONSIBILITIES.md §7.3).
 
-Chart budgets: startup ≤150 s (30×5 s), readiness timeout 5 s (the manual warns
-`/health/ready` runs real dependency checks — DB round-trips — and "may react slower"),
-liveness every 20 s. DEV owes worst-case startup figures (docval loading all schematron
-artifacts; receiver first CRL download; Oracle connection storms after failover) so OCP
-can set budgets instead of guessing. Until then: measured values from TEST become the
-documented facts (RESPONSIBILITIES.md §7.3).
+## G-6 — Writable paths attested; read-only rootfs ENABLED (downgraded to Low)
 
-## G-6 — "Persistent storage" for TDDs unmapped; read-only rootfs blocked (High)
+**Resolved in substance by the supplier email**: b2 fixed the one write-to-disk oversight
+(the CRL validator cached CRLs to disk; now auto-disabled on a read-only filesystem) and
+states **"there are no other writes to disk so read-only root can be enabled."** Chart
+0.2.1 therefore defaults `readOnlyRootFilesystem: true` (`/tmp` stays an emptyDir).
 
-The manual repeatedly says valid TDDs go to "persistent storage" *and* metadata to the TDD
-DB, but never names a path, volume, or bucket; no config key exists for a storage location;
-images declare no VOLUMEs. Everything points to the documents living **in the TDD database**
-— but nobody has it in writing. Until DEV states "no filesystem persistence; all writes go
-to /tmp only":
-- `readOnlyRootFilesystem` stays `false` (chart value ready to flip),
-- no PVC/S3 can be planned (or ruled out) for capacity and backups,
-- DBA cannot size the TDD tablespace for BLOB growth.
-This is the single most consequential unwritten sentence in the delivery. (Supporting
-evidence from image inspection: PyInstaller onedir bundles — no self-extraction to /tmp;
-Java will want /tmp for tmpfiles. `/tmp` is already an emptyDir in every pod.)
+Operational consequence of the CRL change worth knowing: with the disk cache disabled,
+CRLs live in memory only — every receiver restart re-fetches them, so **CRL egress must
+work at pod start** (it is in the network matrix; a broken CRL path now surfaces as
+receive-side validation failures right after restarts, not gradually).
 
-## G-7 — `migrate` semantics: db names and ordering (High for upgrades)
+Residuals: (a) one explicit sentence in the manual that TDD documents persist in the TDD
+**database** only (the email implies it — "no other writes to disk" — but backup scope and
+TDD tablespace/BLOB sizing for DBA should rest on a documented statement, not an
+implication); (b) fold the attestation into the formal restricted-v2 statement (G-1).
 
-`ion-c5-setup migrate <db> latest` exists (idempotent, supports downgrade — good design).
-Unconfirmed: the exact `<db>` argument values (chart guesses `main`, `receiver`, `tdd`
-from the manual's prose "main db"), and the **orchestration contract**: migrate before or
-after the new application pods start? Is schema vN readable by app vN-1 (needed for rolling
-upgrades and for `helm rollback` after a failed upgrade)? The chart ships a pre-upgrade
-migrate Job (`setup.migrateOnUpgrade`, **default off**) that encodes the "migrate first,
-then roll pods" answer — DEV must either bless that or specify differently. Also: DB user
-needs DDL rights during migration only — DBA may want a separate migration user.
+## G-7 — `migrate` semantics: db names and rollback compatibility (Medium)
+
+**Partially answered in the email**: migrations run **per database individually, order
+defined by the admin** (so the chart's fixed `main → receiver → tdd` sequence is a
+legitimate admin choice, not a guess about product behavior); up/down to a version or
+`latest`; no-op when already at target; **all schemas are at v1 — there is nothing to
+migrate yet**, and the command doubles as a schema-version check. The chart's opt-in
+pre-upgrade Job (`setup.migrateOnUpgrade`) is therefore sound; keep it off until the first
+release that actually ships a migration.
+
+Still owed by DEV: the exact `<db>` argument spelling in the manual (chart assumes
+`main`/`receiver`/`tdd` — trivially testable with the no-arg `migrate` version report),
+and the **compatibility contract** once real migrations exist: is schema vN readable by
+app vN-1 (governs rolling upgrades and `helm rollback` without a schema downgrade)?
+DBA note stands: DDL rights are needed during migration only — consider a separate
+migration user.
 
 ## G-8 — First admin user cannot be automated (Medium)
 
@@ -164,6 +177,11 @@ For the DEV errata list (each has bitten or will bite the values files):
 4. p. 20 says "ion-discover … minimalistic web frontend" where ion-docval is meant.
 5. Prose uses `*_idle_wait_time` while the real keys are `*_idle_wait_seconds`.
 6. ion-discover 1.0.1 / ion-docval 1.3.1 versions appear nowhere in the manual.
+7. **New (from the gap-response email):** the email names the four new options
+   `processor_listen_address` / `sender_listen_address` (+ `_port`), while manual §6.8
+   documents `processor_listen_host` / `sender_listen_host`. One of the two is wrong —
+   confirm the key the code reads (the chart only relies on the `*_LISTEN_PORT` env vars,
+   which both sources agree on).
 
 ## G-12 — No metrics ⇒ observability gap shapes the whole day-2 design (High)
 
@@ -175,26 +193,44 @@ send-queue depth + attempts, dead-letter count) exist only in the DB and admin U
 free — scrape-able by a blackbox exporter; queue depths via a SQL exporter
 (oracledb-exporter) against the three DBs — DEV to supply the reference queries (they
 already power the admin dashboard). **Product ask stays:** native `/metrics`; this remains
-the top P2 item. Note `/health/ready` includes per-dependency `latency_ms` — half a metrics
-endpoint already exists; exporting it is a small step for DEV.
+the top P2 item — and the email confirms it is planned: *"still need to add at least
+prometheus metrics"* before the 1.0.0 release tag. Note `/health/ready` includes
+per-dependency `latency_ms` — half a metrics endpoint already exists; exporting it is a
+small step for DEV. When specifying, include queue depths / dead-letter count / send
+attempts (the HPA + alerting signals), not just process metrics.
 
 ## G-13 — The Secret/config contract needs a signature (Medium)
 
 The chart defines the de-facto interface: Secret `ion-c5-app` (keys = env var names),
 Secret `ion-c5-peppol` (`certificate.pem`/`private.key`), ConfigMap-rendered
 `config.ini` at `/etc/ion-c5/config.ini` via `ION_C5_*_CONFIG_FILE`. All of it is *derived
-from* the manual, but DEV has never signed off the chart (fit-gap P1-2). Chart approval =
-DEV confirms wiring keys, env names, mount paths, and the two-Secret split. Without it,
-every incident starts with "unsupported deployment".
+from* the manual, and the email gives an **informal review**: *"I'll mostly defer to your
+own expertise as to most of the yaml specifics … Other than that I'm not seeing anything
+that seems wrong atm."* That is exactly the right division of labor per
+RESPONSIBILITIES.md — DEV reviews application correctness, not platform choices — but it
+should be upgraded from email prose to a **formal per-release sign-off** (one sentence:
+"chart 0.2.1 is a supported deployment of 1.0.0b2"), so no incident starts with
+"unsupported deployment".
 
-## G-14 — Build hygiene (Medium, acceptance-relevant)
+## G-14 — Build hygiene (Medium, acceptance-relevant — partially answered)
 
-Found in the b2 images: sender ships a stray `ion_c5_base-1.0.0b3.dev0` dist-info (build
-not from a clean env — which code is actually inside?); tags still beta (`b2`) while PROD
-acceptance requires release-grade versioning; `image.created` label empty in 6/7 images;
-full Dockerfile shipped at `/` (transparency win — keep it); single-arch amd64 (fine —
-document as a platform constraint). Ask: clean release builds, populated OCI labels,
-release tags for the acceptance version, digest list in the release manifest (§4a).
+Answered by the email: beta tags are **deliberate** (customer asked for `b2`; 1.0.0 tag
+comes once feature-complete, metrics being the known remainder) — acceptable, now it is a
+documented scheme. Four OCI labels added on request. **SBOM movement:** every image already
+contains an internal dependency list; DEV is extracting it into a standard format (ask for
+**SPDX or CycloneDX** explicitly, §4a-1) and has CVE tooling for Python deps + will roll
+updates — this is the §4a package materializing.
+
+Still open: sender ships a stray `ion_c5_base-1.0.0b3.dev0` dist-info (build not from a
+clean env — which code is actually inside?); `image.created` label **empty in 6/7 images**;
+digest list per release; single-arch amd64 (fine — document as a platform constraint).
+
+**Noteworthy offer to evaluate:** DEV floated delivering **linux-runnable binaries instead
+of full images**, letting the customer rebuild on its own patched base images. That would
+dissolve the base-image CVE half of the COTS problem (§4a) at the cost of owning the
+build. Recommendation: keep image delivery for 1.0.0, but put the binary option on the
+contract agenda as the long-term CVE-patching model — it is rare for a COTS vendor to
+offer this; don't let it lapse.
 
 ## G-15 — No TLS in the modules; internal hops are plaintext HTTP (Medium — SEC decision)
 
@@ -231,16 +267,25 @@ per-key restart flags later (fit-gap P3); until then no action needed.
 
 ---
 
-## Recommended settlement package (one meeting agenda)
+## Recommended settlement package (one meeting agenda — updated after the 2026-07-28 email)
 
-1. **DEV image fixes (cheap, high value):** numeric `USER 1000` + group-0 perms (G-1),
-   `EXPOSE 8080` + full OCI labels (G-2), clean release builds + release tags (G-14).
-2. **DEV written statements (no code):** TDD persistence = DB-only + writable paths (G-6),
-   probe paths for discover/docval + startup worst-cases (G-4/G-5), migrate db-names +
-   ordering contract (G-7), SIGTERM behavior (G-9), max AS4 message size (G-17),
-   JVM sizing (G-10), errata batch (G-11).
-3. **DEV product backlog:** `/metrics` (G-12), non-interactive `create-admin-user` (G-8),
-   mTLS roadmap statement (G-15).
+Resolved by the email, close formally: probes on all modules + timings (G-4/G-5),
+read-only rootfs attestation (G-6), migration mechanics (G-7 core), tagging scheme (G-14),
+informal chart review (G-13).
+
+1. **DEV image fixes (cheap, high value):** numeric `USER 1000` + group-0 perms (G-1 —
+   the one P1-class item the email did not touch), `EXPOSE 8080` restore — answer DEV's
+   open question with yes (G-2), additional OCI labels + fix empty `created` (G-2/G-14),
+   clean release builds (G-14).
+2. **DEV written statements (no code):** fold the email's attestations into the manual
+   (timings G-5, read-only/TDD-in-DB sentence G-6); migrate `<db>` spelling + rollback
+   compatibility contract once migrations exist (G-7); SIGTERM behavior (G-9); max AS4
+   message size (G-17); JVM sizing (G-10); errata batch incl. `listen_address` vs
+   `listen_host` (G-11).
+3. **DEV product backlog (committed/queued):** `/metrics` before 1.0.0 — send DEV the
+   desired metric list now, queue depths included (G-12); SBOM in SPDX/CycloneDX (G-14/§4a);
+   non-interactive `create-admin-user` (G-8); mTLS roadmap statement (G-15).
 4. **Customer-side decisions:** SEC verdict on plaintext internal hops (G-15);
-   OPS+DBA interim SQL-exporter monitoring (G-12); NET router/WAF limits (G-17).
-5. **Formal act:** DEV signs off chart 0.2.0 as the supported deployment (G-13, fit-gap P1-2).
+   OPS+DBA interim SQL-exporter monitoring until metrics land (G-12);
+   NET router/WAF limits (G-17); position on the **binaries-instead-of-images** offer (G-14).
+5. **Formal act:** DEV signs off chart 0.2.1 as the supported deployment (G-13, fit-gap P1-2).
