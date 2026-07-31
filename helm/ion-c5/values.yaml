@@ -64,31 +64,6 @@ config:
   admin_workers: 1
   admin_disable_secure_cookies: "False"
 
-# Database initialization (ion-c5-setup) as Helm hook Jobs.
-# - initialize-databases is IDEMPOTENT (manual §5.1: checks version tables, no-ops
-#   if present), so runOnUpgrade is safe; it does NOT migrate existing schemas.
-# - Schema migrations on upgrades use `ion-c5-setup migrate <db> latest`
-#   (manual §5.1.2). migrateOnUpgrade renders a pre-upgrade Job doing exactly that.
-#   Default OFF: take DB backups first and confirm the <db> argument names with
-#   the supplier (see HELM-CHART-GAP-ANALYSIS.md) before enabling.
-setup:
-  enabled: true
-  runOnUpgrade: false
-  migrateOnUpgrade: false
-  # Databases passed to `migrate <db> latest`, in order:
-  migrateDatabases: ["main", "receiver", "tdd"]
-  image:
-    repository: ion-c5-setup
-    tag: 1.0.0b2
-  backoffLimit: 1
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
 # Container hardening.
 # - readOnlyRootFilesystem: TRUE — supplier attested (email 2026-07-28) that b2
 #   writes nothing to disk (the CRL disk cache is auto-disabled on a read-only
@@ -106,6 +81,28 @@ terminationGracePeriodSeconds: 60
 # Optional baseline NetworkPolicies (default-deny ingress + router/same-namespace allows).
 networkPolicy:
   enabled: false
+
+# Startup ordering: admin module first.
+# Kubernetes starts all Deployments in parallel; when waitForAdmin is true every
+# module EXCEPT admin gets an init container that blocks until the admin Service
+# answers GET /health/ready. The wait image (busybox) must be mirrored into
+# global.imageRegistry. Per-module opt-out: components.<name>.waitForAdmin: false.
+# CAUTION: if admin's /health/ready turns out to depend on discover/docval
+# (readiness deps unconfirmed by supplier), gating those two on admin would
+# deadlock startup — in that case set waitForAdmin: false on discover and docval.
+startupOrder:
+  waitForAdmin: true
+  image:
+    repository: busybox
+    tag: "1.36"
+    # digest: "sha256:..."   # takes precedence over tag; pin in PREPROD/PROD
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
 
 # ---------------------------------------------------------------------------
 # Per-module settings. The keys listenPortEnv / configFileEnv / useAppSecret /

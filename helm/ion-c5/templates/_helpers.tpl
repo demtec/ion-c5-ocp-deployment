@@ -32,7 +32,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Rendered config.ini shared by the runtime ConfigMap and the setup-hook ConfigMap.
+Rendered config.ini for the runtime ConfigMap.
 discover_host / validator_host default to the in-chart Services, and
 discover_port / validator_port default to 80 (the Service port). The explicit
 port defaults are REQUIRED: since 1.0.0b2 the application-side defaults are

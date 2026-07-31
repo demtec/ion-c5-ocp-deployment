@@ -40,6 +40,40 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       terminationGracePeriodSeconds: {{ $root.Values.terminationGracePeriodSeconds }}
+      {{- $waitCfg := $root.Values.startupOrder }}
+      {{- $wait := and $waitCfg.waitForAdmin (ne $name "admin") $root.Values.components.admin.enabled }}
+      {{- if hasKey $comp "waitForAdmin" }}
+      {{- $wait = and $wait $comp.waitForAdmin }}
+      {{- end }}
+      {{- if $wait }}
+      initContainers:
+        # Startup ordering: block until the admin module is ready (values.yaml
+        # `startupOrder`). Goes through the admin Service, so it also implies
+        # admin passed its readiness probe. Pod shows Init:0/1 until then.
+        - name: wait-for-admin
+          {{- if $waitCfg.image.digest }}
+          image: "{{ $root.Values.global.imageRegistry }}/{{ $waitCfg.image.repository }}@{{ $waitCfg.image.digest }}"
+          {{- else }}
+          image: "{{ $root.Values.global.imageRegistry }}/{{ $waitCfg.image.repository }}:{{ $waitCfg.image.tag }}"
+          {{- end }}
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              url="http://{{ include "ion-c5.fullname" $root }}-admin{{ $root.Values.components.admin.probes.readinessPath | default "/health/ready" }}"
+              until wget -q -O /dev/null "$url"; do
+                echo "waiting for admin module at $url"
+                sleep 5
+              done
+          resources:
+            {{- toYaml $waitCfg.resources | nindent 12 }}
+      {{- end }}
       containers:
         - name: {{ $name }}
           {{- if $comp.image.digest }}
