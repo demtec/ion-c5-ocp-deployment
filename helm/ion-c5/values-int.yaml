@@ -1,0 +1,63 @@
+# Environment overlay: INT (namespace app-int-c5-c5)
+# Usage: helm upgrade --install c5 ./ion-c5 -f ion-c5/values.yaml -f ion-c5/values-int.yaml
+#
+# Reconstructed 2026-08-12 from a live cluster export (pod specs + c5-ion-c5-config
+# ConfigMap, captured 2026-08-03/04) so that installing this chart with these values
+# reproduces what's actually running. Two things intentionally NOT carried over from
+# the live export (confirmed with the user):
+#   - docval CPU limit was manually bumped to '2' on the live Deployment as a one-off
+#     test and never reverted — stays at the chart default ('1') here.
+#   - Two stray per-container env vars (ION_C5_PROCESSOR_CONFIG_FILE on sender,
+#     ION_C5_RECEIVER_CONFIGURATION on receiver) look like oc-set-env copy/paste
+#     leftovers, not real config — dropped.
+# The live docval Deployment's probes also reference port 8080 numerically instead of
+# the named "http" port every other module (and this chart) uses — treated as drift on
+# the live object, not something to replicate; re-sync should restore the named port.
+
+global:
+  imageRegistry: "pocpgitint01.financnasprava.sk:5050/applications/c5/code/c5-images/ionitesoftware"
+
+config:
+  peppol_identifier: "0242:POP000870"
+  # All three DBs deliberately collapsed onto one Oracle service/user for INT
+  # (confirmed intentional simplification, not an accident) — PROD keeps the
+  # documented 3-way split.
+  main_db_type: oracle
+  main_db_user: "c5_apl"
+  main_db_host: "IC5BBDB1.financnasprava.sk:1521"
+  main_db_name: "?service_name=IC5BBDB"
+  receiver_db_type: oracle
+  receiver_db_user: "c5_apl"
+  receiver_db_host: "IC5BBDB1.financnasprava.sk:1521"
+  receiver_db_name: "?service_name=IC5BBDB"
+  tdd_db_type: oracle
+  tdd_db_user: "c5_apl"
+  tdd_db_host: "IC5BBDB1.financnasprava.sk:1521"
+  tdd_db_name: "?service_name=IC5BBDB"
+  # OCP router / external LB source IPs as seen by the receiver pods:
+  receiver_proxy_ip_addresses: "10.100.234.163,10.100.234.164"
+  # Explicit FQDN (namespace-qualified) rather than the chart's short-name default —
+  # kept as-is to match the live config exactly; would need updating if the INT
+  # namespace is ever renamed.
+  validator_host: "c5-ion-c5-docval.app-int-c5-c5.svc.cluster.local"
+
+components:
+  receiver:
+    env:
+      HTTP_PROXY: "http://194.1.0.106:3128"
+      HTTPS_PROXY: "http://194.1.0.106:3128"
+      NO_PROXY: "*.financnasprava.sk,*.apps.tocpbb1.financnasprava.sk,cluster.local"
+  sender:
+    env:
+      HTTP_PROXY: "http://194.1.0.106:3128"
+      HTTPS_PROXY: "http://194.1.0.106:3128"
+      NO_PROXY: "*.financnasprava.sk,*.apps.tocpbb1.financnasprava.sk,cluster.local"
+      ION_C5_SENDER_WORKERS: "1"
+  discover:
+    env:
+      HTTP_PROXY: "http://194.1.0.106:3128"
+      HTTPS_PROXY: "http://194.1.0.106:3128"
+      NO_PROXY: "*.financnasprava.sk,*.apps.tocpbb1.financnasprava.sk,cluster.local"
+  docval:
+    env:
+      ION_DOCVAL_LOG_LEVEL: "DEBUG"

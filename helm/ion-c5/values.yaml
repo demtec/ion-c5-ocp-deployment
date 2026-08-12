@@ -1,4 +1,4 @@
-# Default values for ion-c5 — targets delivery 1.0.0b2.
+# Default values for ion-c5 — targets delivery 1.0.0b4.
 # Environment-specific overrides belong in values-<env>.yaml (see values-test.yaml).
 # No value in this file may be environment-specific.
 
@@ -69,9 +69,11 @@ config:
 #   writes nothing to disk (the CRL disk cache is auto-disabled on a read-only
 #   filesystem; CRLs are then held in memory and re-fetched after restarts).
 #   /tmp remains an emptyDir in every pod for the runtimes.
-# - runAsUser: images declare the NAMED user "c5" (uid 1000). On OpenShift leave
-#   null (restricted-v2 injects a namespace-range UID). On platforms that enforce
-#   runAsNonRoot against the image user (vanilla k8s), set 1000 explicitly.
+# - runAsUser: as of 1.0.0b3+ the images declare no USER at all (root by default;
+#   b2 declared named user "c5", uid 1000). On OpenShift leave null (restricted-v2
+#   injects a namespace-range UID regardless of image default). On platforms that
+#   enforce runAsNonRoot without SCC (vanilla k8s), set 1000 explicitly — /var/ion
+#   is readable/executable by uid 1000 via "other" permissions either way.
 securityContext:
   readOnlyRootFilesystem: true
   runAsUser: null
@@ -124,7 +126,7 @@ components:
     enabled: true
     image:
       repository: ion-c5-receiver
-      tag: 1.0.0b2
+      tag: 1.0.0b4
     replicas: 2
     containerPort: 8080
     listenPortEnv: ION_C5_RECEIVER_LISTEN_PORT
@@ -163,7 +165,7 @@ components:
     enabled: true
     image:
       repository: ion-c5-processor
-      tag: 1.0.0b2
+      tag: 1.0.0b4
     replicas: 1
     # Health-check-only listener (manual §6.8: processor_listen_port,
     # "only used for health checks") — no Service needed, probes go to the pod.
@@ -194,7 +196,7 @@ components:
     enabled: true
     image:
       repository: ion-c5-sender
-      tag: 1.0.0b2
+      tag: 1.0.0b4
     replicas: 1
     # Health-check-only listener (manual §6.8) — no Service needed.
     containerPort: 8080
@@ -224,7 +226,7 @@ components:
     enabled: true
     image:
       repository: ion-c5-admin
-      tag: 1.0.0b2
+      tag: 1.0.0b4
     replicas: 1
     containerPort: 8080
     listenPortEnv: ION_C5_ADMIN_LISTEN_PORT
@@ -293,7 +295,7 @@ components:
     enabled: true
     image:
       repository: ion-docval
-      tag: 1.3.1
+      tag: 1.3.3-1
     replicas: 1
     containerPort: 8080
     listenPortEnv: ION_DOCVAL_LISTEN_PORT

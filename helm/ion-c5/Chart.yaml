@@ -6,8 +6,8 @@ description: >-
   ion-discover and ion-docval. Database initialization and schema migration
   (ion-c5-setup) are performed outside the chart.
 type: application
-version: 0.4.0
-appVersion: "1.0.0b2"
+version: 0.4.1
+appVersion: "1.0.0b4"
 keywords:
   - peppol
   - as4
