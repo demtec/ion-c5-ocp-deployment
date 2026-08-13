@@ -15,12 +15,20 @@ root filesystem**. The remaining specialties are: identity/permissions inside th
 (G-1), migration/rollback compatibility (G-7), observability (G-12 — supplier has committed
 to Prometheus metrics before 1.0.0), and the SEC decision on plaintext hops (G-15).
 
+**Status update (2026-08-13):** this document's per-item statuses below are as of the
+2026-07-28 supplier email and chart 0.2.1; several have since changed and are noted inline:
+G-1 (images now drop `USER` entirely as of 1.0.0b3, rather than fixing it to numeric — a
+different, not-asked-for outcome), G-2 (`EXPOSE 8080` confirmed added in b3 — **closed**),
+G-7 (b3 manual's worked `migrate` examples partially confirm the `<db>` argument spelling).
+Separately, **chart 0.4.0 removed the pre-upgrade migrate Job this document references** (G-7
+below) — migration is now a manual step outside the chart.
+
 ## Summary table
 
 | # | Specialty | Fact owner | Fix owner | Severity | Status |
 |---|---|---|---|---|---|
-| G-1 | Named `USER c5` vs. runAsNonRoot / arbitrary UID | DEV | DEV (image), OCP (workaround) | High | Open (not addressed in email) |
-| G-2 | No EXPOSE/port metadata in images | DEV | DEV | Low | **Answer owed to DEV** — email offers to restore; recommend `EXPOSE 8080` |
+| G-1 | Named `USER c5` vs. runAsNonRoot / arbitrary UID | DEV | DEV (image), OCP (workaround) | High | Open — **status changed 2026-08-13**: b3+ images drop `USER` entirely rather than fixing it to numeric (harmless on OpenShift SCC; still a `runAsNonRoot` risk on vanilla k8s without the chart's `runAsUser` mitigation) |
+| G-2 | No EXPOSE/port metadata in images | DEV | DEV | Low | **Closed 2026-08-13** — `EXPOSE 8080` confirmed present on all 7 images as of 1.0.0b3 |
 | G-3 | Silent default-port change 80→8080 broke in-cluster wiring | DEV | OCP (chart pins 80) | High | **Mitigated in chart**; release-notes ask stands |
 | G-4 | Probe paths on ion-discover / ion-docval | DEV | OCP quick test | ~~High~~ Low | **Confirmed by email** ("all modules"); routine TEST verify |
 | G-5 | Probe timing budgets | DEV | OCP | Low | **Largely answered**: start "within seconds", docval ~10 s worst; 150 s budget ample; manual section still to add |
@@ -64,7 +72,21 @@ named-user/UID topic; it remains the one P1-class image item without a supplier 
 `1000` on platforms that enforce the numeric check). Do **not** pin 1000 on OpenShift —
 it would require an SCC exception for no benefit.
 
-## G-2 — No EXPOSE / port metadata (Low — answer owed to DEV)
+**Update (2026-08-13, from 1.0.0b3 image inspection):** the supplier did not implement the
+numeric-`USER` ask — instead, **all 7 images as of b3 declare no `USER` directive at all**
+(root by default), the opposite of both the b2 state and the request. Practical impact,
+confirmed by inspecting the extracted image layers: `/var/ion` is owned `root:root` with
+group-0-equal permissions (directories `775`, files `664`/`755`), so **on OpenShift
+restricted-v2 this remains a non-issue** — SCC admission injects an arbitrary UID plus
+supplemental group 0 regardless of the image's declared user, and that UID can read/execute
+everything it needs. On vanilla Kubernetes without SCC this is now unambiguously
+root-by-default, which more reliably trips `runAsNonRoot` admission than the old named-user
+case did — but the chart's existing mitigation (`securityContext.runAsUser: 1000` on such
+platforms) is unaffected and still works. Net: not fixed, arguably a documentation/attestation
+regression, but not a new functional blocker for the OpenShift target, and no chart change
+needed.
+
+## G-2 — No EXPOSE / port metadata (Low — **closed 2026-08-13**)
 
 b1 images declared `EXPOSE 80`; b2 declares nothing — the email confirms this was
 deliberate ("ports are configurable anyway") and offers to restore it. **Our answer: yes,
@@ -74,6 +96,11 @@ interface, one uniform port is now accurate. Labels: DEV asked "do we want addit
 labels?" — requested set: `org.opencontainers.image.revision` (build/commit),
 `…vendor`, `…licenses`, `…description`, `…base.name` + `…base.digest`; and fix the bug
 that `…created` is an **empty string in 6 of 7 b2 images** (only admin has it populated).
+
+**Update (2026-08-13):** `EXPOSE 8080` is confirmed present on all 7 images as of 1.0.0b3 —
+**this half of G-2 is closed**. The additional labels requested above were **not** added
+(only the original 4 labels are present), and `…created` is **still empty in 6 of 7 images**
+in b3 — that part of G-2/G-14 remains open.
 
 ## G-3 — Silent default-port change 80→8080 (High — mitigated, but instructive)
 
@@ -128,9 +155,10 @@ implication); (b) fold the attestation into the formal restricted-v2 statement (
 defined by the admin** (so the chart's fixed `main → receiver → tdd` sequence is a
 legitimate admin choice, not a guess about product behavior); up/down to a version or
 `latest`; no-op when already at target; **all schemas are at v1 — there is nothing to
-migrate yet**, and the command doubles as a schema-version check. The chart's opt-in
-pre-upgrade Job (`setup.migrateOnUpgrade`) is therefore sound; keep it off until the first
-release that actually ships a migration.
+migrate yet**, and the command doubles as a schema-version check. At the time of this
+analysis the chart had an opt-in pre-upgrade Job (`setup.migrateOnUpgrade`) kept off by
+default; **chart 0.4.0 removed this Job (and all `setup.*` values) entirely** — migration is
+now always a manual step run outside the chart, per the current chart README.
 
 Still owed by DEV: the exact `<db>` argument spelling in the manual (chart assumes
 `main`/`receiver`/`tdd` — trivially testable with the no-arg `migrate` version report),
@@ -138,6 +166,11 @@ and the **compatibility contract** once real migrations exist: is schema vN read
 app vN-1 (governs rolling upgrades and `helm rollback` without a schema downgrade)?
 DBA note stands: DDL rights are needed during migration only — consider a separate
 migration user.
+
+**Update (2026-08-13):** the 1.0.0b3 manual now documents worked examples — `migrate`
+(report only), `migrate main latest`, `migrate main 1`, `migrate main 2` (errors "no version
+2") — confirming `main` as a valid `<db>` argument. `receiver`/`tdd` are still inferred by
+naming convention, not literally shown in an example; residual narrowed, not fully closed.
 
 ## G-8 — First admin user cannot be automated (Medium)
 
@@ -273,10 +306,10 @@ Resolved by the email, close formally: probes on all modules + timings (G-4/G-5)
 read-only rootfs attestation (G-6), migration mechanics (G-7 core), tagging scheme (G-14),
 informal chart review (G-13).
 
-1. **DEV image fixes (cheap, high value):** numeric `USER 1000` + group-0 perms (G-1 —
-   the one P1-class item the email did not touch), `EXPOSE 8080` restore — answer DEV's
-   open question with yes (G-2), additional OCI labels + fix empty `created` (G-2/G-14),
-   clean release builds (G-14).
+1. **DEV image fixes (cheap, high value):** numeric `USER 1000` + group-0 perms (G-1 — as of
+   b3 the images dropped `USER` entirely instead, the opposite of this ask; still open),
+   ~~`EXPOSE 8080` restore~~ **done as of b3** (G-2, closed), additional OCI labels + fix
+   empty `created` (still open, G-2/G-14 residual), clean release builds (G-14).
 2. **DEV written statements (no code):** fold the email's attestations into the manual
    (timings G-5, read-only/TDD-in-DB sentence G-6); migrate `<db>` spelling + rollback
    compatibility contract once migrations exist (G-7); SIGTERM behavior (G-9); max AS4

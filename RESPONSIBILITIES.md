@@ -6,7 +6,10 @@ the Helm chart is **customer-authored** (`helm/ion-c5/`). That combination is wo
 only if the boundary below is agreed and enforced — otherwise every probe timeout and port
 number becomes an argument.
 
-**Date:** 2026-07-28 · applies to delivery 1.0.0b2
+**Date:** 2026-07-28 (RACI framework) · last reconciled 2026-08-13, applies to delivery 1.0.0b4.
+The framework itself is evergreen; only the "which delivery" reference moves — see the chart's
+own README (`helm/ion-c5/README.md`) for the currently-targeted version and chart mechanics
+(the DB-init "Setup Job" row below predates chart 0.4.0, which removed it — see the footnote).
 
 ---
 
@@ -54,7 +57,7 @@ environment value wrong (owner role)?* That is the whole dispute-resolution proc
 | Routes (TLS termination mode, redirect policy, timeouts) | I | **A/R** | C | **C** | C | | |
 | NetworkPolicy templates | I | **A/R** | | **C** | **A**⁴ | | |
 | HPA / PDB templates and defaults | **C**⁵ | **A/R** | C | | | | |
-| Setup Job (hook wiring, when it runs) | **C**⁶ | **A/R** | C | | | **C** | |
+| DB init/migration command (`ion-c5-setup`) wiring — manual step since chart 0.4.0, no chart-managed hook Job⁶ | **C**⁶ | **A/R** | C | | | **C** | |
 | Secret *object shape* (names, keys, format) — as encoded in chart/README | **C**⁷ | **A/R** | I | | **C** | | |
 | ConfigMap rendering of `config.ini` | **C**⁸ | **A/R** | C | | | | |
 
@@ -63,7 +66,10 @@ environment value wrong (owner role)?* That is the whole dispute-resolution proc
 ³ DEV documents what each module listens on and what `ION_*_LISTEN_PORT` accepts.
 ⁴ SEC is accountable that a default-deny policy exists in PROD; NET consulted on egress specifics; OCP implements.
 ⁵ DEV documents scaling rules (which modules may run >1 replica, worker semantics, scaling signal).
-⁶ DEV documents idempotency/migration semantics of `initialize-databases`.
+⁶ DEV documents idempotency/migration semantics of `initialize-databases`. Chart ≤0.2.x ran this
+as a pre-install hook Job; chart 0.4.0 removed it entirely (no `setup.*` values, no `-env`
+ConfigMap) — it is now a manual `oc run`/CLI step performed outside the chart, per the current
+chart README.
 ⁷ DEV documents which env vars are secret-worthy and their exact names; the Secret **objects** themselves are created by OPS/SEC pipelines, never by the chart.
 ⁸ DEV owns the config reference (every key: type, default, restart-required); OCP owns which keys are exposed as chart values.
 
@@ -124,7 +130,7 @@ performance ticket on grounds of "wrong resources". This must be stated in the c
 | Deliver images + release manifest + SBOM + changelog | **A/R** | I | I | | C | | |
 | Scan & promote images (quarantine → prod registry) | I | R | | | **A** | | |
 | Provision DBs, schemas, grants | C | | | | | **A/R** | |
-| Run `initialize-databases` (setup Job) | C | **R** | A | | | C | |
+| Run `initialize-databases` (manual command, no chart-managed Job since chart 0.4.0) | C | **R** | A | | | C | |
 | Create Secrets (pipeline) | | C | R | | **A** | C | C |
 | Helm install/upgrade execution | C | **R** | **A** (window/approval) | | | | |
 | First admin user + MFA enrollment | C | C | **A/R** | | I | | |

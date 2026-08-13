@@ -6,7 +6,7 @@ Database initialization and schema migration (`ion-c5-setup`) are performed outs
 chart — run `ion-c5-setup initialize-databases` / `migrate` manually before install/upgrade
 (Administrator's Manual §5.1).
 
-Chart **0.4.0** targets delivery **1.0.0b2** (images `1.0.0b2` / discover `1.0.1` / docval `1.3.1`).
+Chart **0.4.2** targets delivery **1.0.0b4** (images `1.0.0b4` / discover `1.0.1` / docval `1.3.3-1`).
 Chart origin: authored by the customer because the supplier does not deliver a chart (COTS);
 supplier sign-off pending — see `../../FIT-GAP-ANALYSIS.md` and `../../HELM-CHART-GAP-ANALYSIS.md`.
 
@@ -27,9 +27,11 @@ supplier sign-off pending — see `../../FIT-GAP-ANALYSIS.md` and `../../HELM-CH
   read-only at `/etc/ion-c5/config.ini`); sensitive values arrive as env vars from a
   pre-created Secret. Env vars override the config file (manual §6.1), so the file never
   contains secrets. Config changes trigger a rolling restart (checksum annotation).
-- **Non-root**: images declare named user `c5` (uid 1000). On OpenShift leave
-  `securityContext.runAsUser` null (SCC injects the UID); set `1000` on platforms that
-  enforce `runAsNonRoot` against the image's non-numeric user (G-1).
+- **Non-root**: as of 1.0.0b3+ images declare no `USER` at all (root by default; b2 declared
+  a named user `c5`, uid 1000). On OpenShift leave `securityContext.runAsUser` null (SCC
+  injects a namespace-range UID regardless of image default); set `1000` on platforms that
+  enforce `runAsNonRoot` without SCC (vanilla k8s) — `/var/ion` is readable/executable by
+  uid 1000 via "other" permissions either way (G-1).
 - **Admin module starts first** (`startupOrder.waitForAdmin`, default on): every other
   module runs a `wait-for-admin` init container (busybox `wget` loop against the admin
   Service's `/health/ready`) and stays `Init:0/1` until admin is ready. Opt out per

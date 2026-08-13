@@ -7,6 +7,21 @@
 
 ---
 
+**Status update (2026-08-13):** this is a point-in-time snapshot of the 1.0.0b2 delivery, kept as
+the historical negotiating record rather than re-issued on every product/chart move. Known
+developments since, not reflected in the chapter-by-chapter analysis below:
+- Chart moved 0.2.0/0.2.1 → **0.4.2**: the setup/migrate hook Jobs and the `-env` ConfigMap
+  referenced in Chapter 3/12 below were **removed entirely** in chart 0.4.0 — DB init/migration
+  is now a manual step outside the chart (current mechanics: `helm/ion-c5/README.md`).
+- Delivery moved 1.0.0b2 → 1.0.0b3 → **1.0.0b4** (running in INT as of this update). b3 images
+  **dropped the `USER c5` declaration entirely** rather than fixing it to numeric — the opposite
+  of the G-1 ask (harmless on OpenShift SCC, still open on vanilla k8s); `EXPOSE 8080` was added
+  as requested (G-2, now closed); ion-docval moved to `1.3.3-1`.
+- **§6 open question 5 (GitOps tool) is resolved: Argo CD** — confirmed via the live cluster's
+  `argocd.argoproj.io/tracking-id` annotations.
+
+---
+
 ## 1. Executive summary
 
 The 1.0.0b2 delivery **closes the worst gaps of b1**. Newly delivered and verified:
@@ -84,7 +99,7 @@ Status legend: ✅ **Fit** · 🟡 **Partial** · ❌ **Gap** · ❓ **Verify** 
 
 | Requirement | Status | Comment |
 |---|---|---|
-| Helm chart (Helm 3, OpenShift, GitOps-ready) | ❌ (mitigated) | Still not delivered. Customer chart `helm/ion-c5/` **0.2.0** targets b2 (HTTP health probes, migrate Job, digest pinning). **Supplier sign-off required** (G-13, P1-2) |
+| Helm chart (Helm 3, OpenShift, GitOps-ready) | ❌ (mitigated) | Still not delivered. Customer chart `helm/ion-c5/` **0.2.1** (at the time of this analysis; now 0.4.2 — see status update above) targeted b2 with HTTP health probes, an opt-in migrate Job, and digest pinning; **the migrate Job was later removed in chart 0.4.0** (DB migration is now a manual step). **Supplier sign-off required** (G-13, P1-2) |
 | Multi-env via values.yaml, no hardcoded env values | 🟡 | Achieved by the customer chart |
 | Alternative: full deployment documentation | 🟡⬆️ | Manual now states the container-platform config pattern explicitly (read-only config volume + Secrets→env, §6.1) — good, but no K8s objects |
 
@@ -147,7 +162,7 @@ Status legend: ✅ **Fit** · 🟡 **Partial** · ❌ **Gap** · ❓ **Verify** 
 
 | Requirement | Status | Comment |
 |---|---|---|
-| Versioning, upgrade procedure, zero-downtime, order, migrations, rollback | 🟡⬆️ | **Mechanism delivered + clarified by email:** idempotent `initialize-databases`; per-DB schema versions; `migrate <db> <version|latest>` up **and down**; order admin-defined; schemas all at v1 (nothing to migrate yet). **Residual:** `<db>` argument spelling in the manual; app-vs-schema rollback compatibility once real migrations ship (G-7). Chart ships opt-in pre-upgrade migrate Job |
+| Versioning, upgrade procedure, zero-downtime, order, migrations, rollback | 🟡⬆️ | **Mechanism delivered + clarified by email:** idempotent `initialize-databases`; per-DB schema versions; `migrate <db> <version|latest>` up **and down**; order admin-defined; schemas all at v1 (nothing to migrate yet). **Residual:** `<db>` argument spelling in the manual (partially confirmed by the 1.0.0b3 manual's worked examples for `main`); app-vs-schema rollback compatibility once real migrations ship (G-7). At the time of this analysis the chart shipped an opt-in pre-upgrade migrate Job; **chart 0.4.0 removed it — migration is now a manual step run outside the chart** |
 
 ### Chapter 13 — Security
 
@@ -251,6 +266,11 @@ requirement is met through supplier obligations plus customer-side gates:
 | admin | receiver DB, TDD DB, main DB | 1521/5432 | management UI |
 | all | DNS, NTP (platform) | 53, 123 | platform services |
 
+Note (2026-08-13): in at least one live environment, receiver/sender/discover's "Internet"
+egress above routes through a forward HTTP(S) proxy rather than direct — see the
+`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` env vars in `values-int.yaml`. NET/OCP should confirm
+whether this is a platform-standard pattern for all environments or INT-specific.
+
 ---
 
 ## 6. Open questions
@@ -267,7 +287,7 @@ group-0 permissions (G-1 — the one unanswered P1 item), release notes as a del
 2. ✅ Oracle; 3-way DB split (receiver/TDD/main) for PROD, single instance acceptable below PROD.
 3. ✅ Receiver/admin hostname pattern per environment; concrete FQDNs + admin IP ranges into env values files.
 4. ✅ `peppol-test` in all environments except PROD (`peppol`).
-5. ⬜ GitOps tool (Argo CD?) — still open.
+5. ✅ GitOps tool: **Argo CD** — resolved 2026-08-13 (confirmed via live cluster tracking-id annotations).
 6. ✅ COTS image-only delivery — formal exception + §4a controls; source delivery not pursued.
 7. ⬜ **NEW — SEC decision:** accept plaintext in-cluster hops, or require IPsec/mesh (G-15).
 8. ⬜ **NEW — OPS/DBA:** stand up interim queue monitoring via SQL exporter (G-12) for PREPROD/PROD.
