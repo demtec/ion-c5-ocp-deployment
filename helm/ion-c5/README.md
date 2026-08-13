@@ -113,6 +113,7 @@ interactive-only in b2). Post-install: enable MFA (TOTP), run smoke tests (`/ver
 | `components.<name>.probes.{startupPath,readinessPath,livenessPath,type}` | probe overrides (defaults `/health/*`, type `http`) |
 | `components.receiver.route.host` | public AS4 hostname (SMP endpoint) |
 | `components.admin.route.annotations` | set `haproxy.router.openshift.io/ip_whitelist`! |
+| `components.<name>.route.extraHosts` | additional alias hostnames for the same backend Service, each its own Route (`tls: false` for plain HTTP) |
 | `components.docval.env` | e.g. `JDK_JAVA_OPTIONS: -XX:MaxRAMPercentage=60` (JVM sizing, G-10) |
 | `startupOrder.waitForAdmin` | admin starts first; other modules gate on admin readiness via init container (default `true`) |
 | `components.<name>.waitForAdmin` | per-module opt-out of the admin gate (set `false`) |

@@ -25,5 +25,33 @@ spec:
   tls:
     termination: {{ $comp.route.tlsTermination | default "edge" }}
     insecureEdgeTerminationPolicy: Redirect
+{{- range $extra := $comp.route.extraHosts }}
+---
+# Additional alias hostname for this component, alongside the primary route above
+# (e.g. a separately DNS-registered short name pointing at the same backend Service).
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "ion-c5.fullname" $root }}-{{ $name }}-{{ $extra.name }}
+  labels:
+    {{- include "ion-c5.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+  {{- with $extra.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  host: {{ $extra.host }}
+  to:
+    kind: Service
+    name: {{ include "ion-c5.fullname" $root }}-{{ $name }}
+  port:
+    targetPort: http
+  {{- if $extra.tls }}
+  tls:
+    termination: {{ $extra.tlsTermination | default "edge" }}
+    insecureEdgeTerminationPolicy: Redirect
+  {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}

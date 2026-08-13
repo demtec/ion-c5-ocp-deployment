@@ -152,6 +152,15 @@ components:
       host: ""
       tlsTermination: edge
       annotations: {}
+      # Additional alias hostnames sharing the same backend Service, each its own
+      # Route object (name: "<fullname>-receiver-<name>"). tls: false emits no tls
+      # block at all (plain HTTP) — set true + tlsTermination for edge termination.
+      extraHosts: []
+        # - name: alias
+        #   host: alias.example.com
+        #   tls: false
+        #   tlsTermination: edge
+        #   annotations: {}
     hpa:
       enabled: false
       minReplicas: 2
@@ -253,6 +262,7 @@ components:
       tlsTermination: edge
       annotations: {}
       #   haproxy.router.openshift.io/ip_whitelist: "10.0.0.0/8 192.168.1.0/24"
+      extraHosts: []
     hpa:
       enabled: false
     pdb:

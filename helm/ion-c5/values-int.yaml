@@ -13,6 +13,11 @@
 # The live docval Deployment's probes also reference port 8080 numerically instead of
 # the named "http" port every other module (and this chart) uses — treated as drift on
 # the live object, not something to replicate; re-sync should restore the named port.
+# (Confirmed 2026-08-13 from full Deployment/Service/Route/Secret exports: docval's
+# Service was patched the same way — targetPort: 8080 instead of "http" — same drift,
+# same call. receiver's PodDisruptionBudget doesn't exist despite pdb.enabled: true
+# defaulting on for receiver — left as the chart default here; treated as a sync gap
+# for Argo to fix, not an intentional override.)
 
 global:
   imageRegistry: "pocpgitint01.financnasprava.sk:5050/applications/c5/code/c5-images/ionitesoftware"
@@ -43,10 +48,25 @@ config:
 
 components:
   receiver:
+    replicas: 1
+    route:
+      host: "c5-receiver.c5.iocpbb1.financnasprava.sk"
+      # Alias hostname registered separately (manually created via console, no
+      # Helm/Argo tracking, confirmed intentional 2026-08-13) — plain HTTP, matching
+      # what's actually live, not the edge-TLS termination the primary route uses.
+      extraHosts:
+        - name: ic5
+          host: "ic5.financnasprava.sk"
+          tls: false
     env:
       HTTP_PROXY: "http://194.1.0.106:3128"
       HTTPS_PROXY: "http://194.1.0.106:3128"
       NO_PROXY: "*.financnasprava.sk,*.apps.tocpbb1.financnasprava.sk,cluster.local"
+  admin:
+    route:
+      host: "c5-admin.apps.iocpbb1.financnasprava.sk"
+    env:
+      ION_C5_ADMIN_LOG_LEVEL: "DEBUG"
   sender:
     env:
       HTTP_PROXY: "http://194.1.0.106:3128"
