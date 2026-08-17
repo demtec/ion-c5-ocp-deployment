@@ -1,8 +1,13 @@
 # ion-C5 — Implementation plan for OpenShift Container Platform
 
-**Rev. 3 (2026-08-13)** — targets delivery **1.0.0b4** and chart **0.4.2**. (Rev. 2, 2026-07-28,
-targeted 1.0.0b2/chart 0.2.0; the DB-init and upgrade phases below have changed since — chart
-0.4.0 removed the setup/migrate hook Jobs and the `-env` ConfigMap entirely.)
+**Rev. 4 (2026-08-13)** — targets delivery **1.0.0b4** and chart **0.4.3**. (Rev. 2, 2026-07-28,
+targeted 1.0.0b2/chart 0.2.0; the DB-init and upgrade phases below have changed twice since —
+chart 0.4.0 removed the setup/migrate hook Jobs and the `-env` ConfigMap entirely; chart 0.4.3
+re-added `ion-c5-setup` as a **scale-to-zero Deployment** (`components.setup`), so DB
+init/migration now runs via `oc scale` + `oc exec` against a chart-managed object instead of a
+standalone `oc run` pod — and, because that object only exists once Helm has installed the
+chart, **DB initialization now happens after Helm install, not before** — Phase 4/5 swapped
+order vs. rev. 3.)
 Step-by-step deployment order for one environment (repeat per TEST → INT → PREPROD → PROD,
 changing only the environment values file). Commands assume `oc`, `helm` 3 and
 `podman`/`skopeo` on a bastion/CI runner with access to the cluster and the customer registry.
@@ -27,8 +32,10 @@ The supplier tarballs are OCI-layout archives. From `docker_images/`:
 
 ```bash
 REG=registry.customer.example/ion-c5   # adjust — matches global.imageRegistry in values.yaml
+# docval versions independently of the ion-c5-1.0.0bN umbrella (verified: the b4 bundle
+# ships 1.3.1) — if an environment runs a later docval, import that tag too/instead.
 for f in ion-c5-receiver_1.0.0b4 ion-c5-processor_1.0.0b4 ion-c5-sender_1.0.0b4 \
-         ion-c5-admin_1.0.0b4 ion-c5-setup_1.0.0b4 ion-discover_1.0.1 ion-docval_1.3.3-1; do
+         ion-c5-admin_1.0.0b4 ion-c5-setup_1.0.0b4 ion-discover_1.0.1 ion-docval_1.3.1; do
   name=${f%_*}; tag=${f##*_}
   skopeo copy oci-archive:${f}.tar.gz docker://$REG/$name:$tag
 done
@@ -68,20 +75,7 @@ oc create secret generic ion-c5-peppol \
 
 For GitOps, manage these via Sealed Secrets / External Secrets Operator instead of `oc create`.
 
-## Phase 4 — Database initialization (OCP runs, DBA on standby)
-
-**Manual step, run before Helm install — chart 0.4.0 removed the pre-install hook Job that
-earlier revisions of this plan relied on** (no `setup.*` values, no chart-rendered `-env`
-ConfigMap). **Confirmed idempotent** since b2 (manual §5.1: checks schema-version tables,
-no-ops when present) — safe to re-run if unsure whether it already happened:
-
-```bash
-oc run ion-c5-init --rm -it --image=$REG/ion-c5-setup:1.0.0b4 ... -- initialize-databases
-```
-
-Upgrades use the separate `migrate` mechanism — see Phase 10 (also a manual step).
-
-## Phase 5 — Helm install (OCP)
+## Phase 4 — Helm install (OCP)
 
 ```bash
 cd helm
@@ -91,19 +85,17 @@ helm upgrade --install ion-c5 ./ion-c5 \
   -f ./ion-c5/values-test.yaml        # environment overlay: registry, hosts, DB, network
 ```
 
-All six modules carry real HTTP probes (`/health/startup|ready|liveness`, delivery b2+).
+All six runtime modules carry real HTTP probes (`/health/startup|ready|liveness`, delivery
+b2+); `ion-c5-setup` (`components.setup`, a seventh, non-runtime component) is also created
+but at **0 replicas** — it's a CLI tool, not a server, and stays scaled down until Phase 5
+needs it.
+
 **Since chart 0.4.0, startup order is admin-first, not dependency-ordered**: admin has no
-init container and starts as soon as its own DB dependencies are ready; every other module
-gets a `wait-for-admin` init container (busybox polling the admin Service's `/health/ready`)
-and shows `Init:0/1` until admin passes readiness. Expected order if watching:
-
-1. **admin** (3 DBs; no init container, starts immediately) →
-2. **receiver, processor, sender, discover, docval** (all gated on admin's `/health/ready`
-   via `wait-for-admin`, then each proceeds once its own dependencies — DBs, docval,
-   discover — are ready)
-
-(Superseded the earlier dependency-only ordering description from rev. 2 of this plan, which
-predated the admin-first startup-ordering feature.)
+init container and starts as soon as its own DB dependencies are ready; every other runtime
+module gets a `wait-for-admin` init container (busybox polling the admin Service's
+`/health/ready`) and shows `Init:0/1` until admin passes readiness. **On a fresh environment,
+admin's readiness probe will fail — and every other module will sit in `Init:0/1` — until
+Phase 5 initializes the databases; that's expected, not a fault.** Watch:
 
 ```bash
 oc get pods -w
@@ -115,22 +107,42 @@ are re-fetched after every receiver restart: CRL egress must work at pod start).
 discover/docval probes unexpectedly 404, documented fallbacks exist in values.yaml
 (discover: `probes.readinessPath=/v2`; docval: `probes.type=tcp`).
 
-## Phase 6 — First administrator user (OPS; interactive, one-off — G-8)
+## Phase 5 — Database initialization (OCP runs, DBA on standby)
 
-`create-admin-user` still prompts for username/password (b2), so it cannot run as a Job:
+Uses the chart-managed `ion-c5-setup` Deployment (scaled to 0 by Phase 4) rather than a
+standalone pod — scale it up, run the command, scale back down:
 
 ```bash
-oc run ion-c5-adminuser --rm -it --restart=Never \
-  --image=$REG/ion-c5-setup:1.0.0b4 \
-  --overrides='{"spec":{"containers":[{"name":"ion-c5-adminuser","image":"'$REG'/ion-c5-setup:1.0.0b4","args":["create-admin-user"],"stdin":true,"tty":true,"envFrom":[{"secretRef":{"name":"ion-c5-app"}}]}]}}'
+oc scale deployment/ion-c5-setup --replicas=1 -n ion-c5-test
+oc exec -it deploy/ion-c5-setup -n ion-c5-test -- \
+  /var/ion/ion-c5-setup/ion-c5-setup initialize-databases
+oc scale deployment/ion-c5-setup --replicas=0 -n ion-c5-test
 ```
 
-(No chart-rendered env ConfigMap exists since chart 0.4.0 — `ion-c5-setup` needs the same DB
-connection facts as the other modules; mount the chart's `<release>-ion-c5-config` ConfigMap
-the same way the running modules do if `ion-c5-setup` needs config.ini, and confirm its own
-config-file env var name with the manual — likely `ION_C5_SETUP_CONFIG_FILE` by the naming
-convention every other module follows, but not yet chart-documented since setup runs outside
-the chart.) Then log in and **enable MFA (TOTP)** — available since b2 — for every admin account.
+**Confirmed idempotent** since b2 (manual §5.1: checks schema-version tables, no-ops when
+present) — safe to re-run if unsure whether it already happened. Once this completes, admin's
+`/health/ready` should turn healthy on its own and every `wait-for-admin`-gated module from
+Phase 4 should proceed past `Init:0/1` without a restart.
+
+Upgrades use the separate `migrate` mechanism against the same `setup` Deployment — see
+Phase 10.
+
+## Phase 6 — First administrator user (OPS; interactive, one-off — G-8)
+
+`create-admin-user` still prompts for username/password (b2), so it needs an interactive
+session — reuse the same `setup` Deployment as Phase 5 (scale up once for both if doing them
+back-to-back):
+
+```bash
+oc scale deployment/ion-c5-setup --replicas=1 -n ion-c5-test
+oc exec -it deploy/ion-c5-setup -n ion-c5-test -- \
+  /var/ion/ion-c5-setup/ion-c5-setup create-admin-user
+oc scale deployment/ion-c5-setup --replicas=0 -n ion-c5-test
+```
+
+(`ion-c5-setup` reads its config the same way — `ION_C5_SETUP_CONFIG_FILE`, confirmed in the
+1.0.0b4 manual §6.) Then log in and **enable MFA (TOTP)** — available since b2 — for every
+admin account.
 
 ## Phase 7 — Exposure and smoke tests (OCP + OPS)
 
@@ -178,14 +190,21 @@ Publish/update the SMP entry for `0242:<SEATID>` with endpoint `https://<receive
 Now partially unblocked by b2's `migrate` command:
 
 1. DB backup (DBA).
-2. Bump image tags/digests in the env values file.
-3. Schema migration: confirm db-names/ordering with supplier (G-7 — `main` confirmed by the
-   1.0.0b3 manual's worked examples; `receiver`/`tdd` inferred by convention), then run
-   manually — no chart-managed Job exists since chart 0.4.0:
-   `oc run ... --image=$REG/ion-c5-setup:<new> -- migrate main latest` (repeat per DB).
-4. `helm upgrade`; watch readiness.
-5. Rollback rehearsal: `helm rollback` + `migrate <db> <previous-version>` (downgrade is
-   supported by the tool; app-vs-schema compatibility statement still owed by supplier, G-7).
+2. Bump image tags/digests in the env values file, including `components.setup.image.tag` so
+   its CLI matches the target release.
+3. `helm upgrade` first (updates the `setup` Deployment's image too), then run the schema
+   migration via `setup` — confirm db-names/ordering with supplier first (G-7 — `main`
+   confirmed by the 1.0.0b3 manual's worked examples; `receiver`/`tdd` inferred by convention):
+   ```bash
+   oc scale deployment/ion-c5-setup --replicas=1 -n ion-c5-test
+   oc exec -it deploy/ion-c5-setup -n ion-c5-test -- \
+     /var/ion/ion-c5-setup/ion-c5-setup migrate main latest   # repeat per DB
+   oc scale deployment/ion-c5-setup --replicas=0 -n ion-c5-test
+   ```
+4. Watch readiness across all modules.
+5. Rollback rehearsal: `helm rollback` + the same scale/exec pattern with
+   `migrate <db> <previous-version>` (downgrade is supported by the tool; app-vs-schema
+   compatibility statement still owed by supplier, G-7).
 
 ## Environment promotion
 

@@ -2,11 +2,14 @@
 
 Deploys the ion-C5 Peppol Access Point (corner 5) — receiver, processor, sender, admin UI,
 ion-discover and ion-docval — on Red Hat OpenShift under the `restricted-v2` SCC.
-Database initialization and schema migration (`ion-c5-setup`) are performed outside the
-chart — run `ion-c5-setup initialize-databases` / `migrate` manually before install/upgrade
-(Administrator's Manual §5.1).
+`ion-c5-setup` (DB init/migration/create-admin-user CLI) is also chart-managed, but as a
+**scale-to-zero Deployment** (`components.setup.replicas: 0` by default) rather than a
+server — it has no listen port or health endpoints, so the actual commands are still run
+by hand: scale it up, `oc exec` in, run the CLI, scale back down (see Install/Upgrades below).
 
-Chart **0.4.2** targets delivery **1.0.0b4** (images `1.0.0b4` / discover `1.0.1` / docval `1.3.3-1`).
+Chart **0.4.4** targets delivery **1.0.0b4** (images `1.0.0b4` / discover `1.0.1` / docval
+`1.3.1` — docval versions independently of the ion-c5-1.0.0bN umbrella; some environments
+override it to a later docval, see `values-int.yaml` for an example).
 Chart origin: authored by the customer because the supplier does not deliver a chart (COTS);
 supplier sign-off pending — see `../../FIT-GAP-ANALYSIS.md` and `../../HELM-CHART-GAP-ANALYSIS.md`.
 
@@ -42,6 +45,11 @@ supplier sign-off pending — see `../../FIT-GAP-ANALYSIS.md` and `../../HELM-CH
   writes nothing to disk; the CRL disk cache auto-disables on a read-only filesystem
   (CRLs held in memory, re-fetched after restart — keep CRL egress open). `/tmp` stays
   an emptyDir in every pod.
+- **`ion-c5-setup` scale-to-zero:** its image ENTRYPOINT expects a CLI subcommand
+  (`initialize-databases` / `migrate <db> <version>` / `create-admin-user`) and exits
+  otherwise, so `components.setup.command` overrides it to idle (`sleep infinity`).
+  Not gated by `wait-for-admin` (`waitForAdmin: false`) since DB init may need to run
+  before anything else — including admin — can start successfully.
 
 ## Prerequisites
 
@@ -89,19 +97,28 @@ helm upgrade --install ion-c5 ./ion-c5 -n <namespace> \
   -f ion-c5/values.yaml -f ion-c5/values-<env>.yaml
 ```
 
-Pre-install: initialize the databases with `ion-c5-setup initialize-databases` (run
-outside the chart) and create the first admin user (`ion-c5-setup create-admin-user`,
-interactive-only in b2). Post-install: enable MFA (TOTP), run smoke tests (`/version`,
-`/health/ready` per module), then publish the receiver Route on the SMP.
+Pre-install: initialize the databases and create the first admin user via the `setup`
+component:
+
+```bash
+oc scale deployment/<release>-ion-c5-setup --replicas=1
+oc exec -it deploy/<release>-ion-c5-setup -- /var/ion/ion-c5-setup/ion-c5-setup initialize-databases
+oc exec -it deploy/<release>-ion-c5-setup -- /var/ion/ion-c5-setup/ion-c5-setup create-admin-user   # interactive-only in b2
+oc scale deployment/<release>-ion-c5-setup --replicas=0
+```
+
+Post-install: enable MFA (TOTP), run smoke tests (`/version`, `/health/ready` per module),
+then publish the receiver Route on the SMP.
 
 ## Upgrades
 
 1. DB backup.
-2. Bump image tags (TEST/INT) or digests (PREPROD/PROD) in the env values file.
-3. Schema migration: run `ion-c5-setup migrate <db> latest` manually per DB
-   (outside the chart; confirm db-names/ordering with the supplier first, G-7).
-4. `helm upgrade`; rollback via `helm rollback` + `migrate <db> <previous-version>`
-   (downgrades supported by the tool; compatibility statement pending, G-7).
+2. Bump image tags (TEST/INT) or digests (PREPROD/PROD) in the env values file
+   (`components.setup.image.tag` too, so its CLI matches the target release).
+3. Schema migration: scale `setup` to 1, `oc exec` in and run `ion-c5-setup migrate <db>
+   latest` per DB (confirm db-names/ordering with the supplier first, G-7), scale back to 0.
+4. `helm upgrade`; rollback via `helm rollback` + the same `migrate <db> <previous-version>`
+   pattern (downgrades supported by the tool; compatibility statement pending, G-7).
 
 ## Key values
 
@@ -116,6 +133,8 @@ interactive-only in b2). Post-install: enable MFA (TOTP), run smoke tests (`/ver
 | `components.receiver.route.host` | public AS4 hostname (SMP endpoint) |
 | `components.admin.route.annotations` | set `haproxy.router.openshift.io/ip_whitelist`! |
 | `components.<name>.route.extraHosts` | additional alias hostnames for the same backend Service, each its own Route (`tls: false` for plain HTTP) |
+| `components.setup.replicas` | `0` by default — scale to 1 to run `ion-c5-setup` commands via `oc exec`, then back to 0 |
+| `components.<name>.command` | overrides the image ENTRYPOINT (used by `setup` to idle instead of exiting) |
 | `components.docval.env` | e.g. `JDK_JAVA_OPTIONS: -XX:MaxRAMPercentage=60` (JVM sizing, G-10) |
 | `startupOrder.waitForAdmin` | admin starts first; other modules gate on admin readiness via init container (default `true`) |
 | `components.<name>.waitForAdmin` | per-module opt-out of the admin gate (set `false`) |

@@ -82,6 +82,12 @@ spec:
           image: "{{ $root.Values.global.imageRegistry }}/{{ $comp.image.repository }}:{{ $comp.image.tag }}"
           {{- end }}
           imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          {{- with $comp.command }}
+          # Overrides the image ENTRYPOINT — used by CLI-tool components (e.g. ion-c5-setup)
+          # that would otherwise exit immediately instead of running as a server.
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

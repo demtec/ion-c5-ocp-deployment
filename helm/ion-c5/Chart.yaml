@@ -3,10 +3,10 @@ name: ion-c5
 description: >-
   ion-C5 Peppol Access Point (corner 5) for Red Hat OpenShift.
   Deploys ion-c5-receiver, ion-c5-processor, ion-c5-sender, ion-c5-admin,
-  ion-discover and ion-docval. Database initialization and schema migration
-  (ion-c5-setup) are performed outside the chart.
+  ion-discover, ion-docval, and ion-c5-setup (scale-to-zero, for on-demand
+  DB init/migration/create-admin-user CLI access via oc exec).
 type: application
-version: 0.4.2
+version: 0.4.4
 appVersion: "1.0.0b4"
 keywords:
   - peppol

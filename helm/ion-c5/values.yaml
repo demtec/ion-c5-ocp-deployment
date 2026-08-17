@@ -305,7 +305,11 @@ components:
     enabled: true
     image:
       repository: ion-docval
-      tag: 1.3.3-1
+      # 1.3.1 is what the ion-c5-1.0.0b4 delivery bundle actually ships (verified from the
+      # tarball) — docval versions independently of the ion-c5-1.0.0bN umbrella, so don't
+      # assume it should track whatever's newest; environments running a later docval
+      # (e.g. INT on 1.3.3-1) need an explicit per-environment override, not a base bump.
+      tag: 1.3.1
     replicas: 1
     containerPort: 8080
     listenPortEnv: ION_DOCVAL_LISTEN_PORT
@@ -333,6 +337,49 @@ components:
       limits:
         cpu: "1"
         memory: 2Gi
+    hpa:
+      enabled: false
+    pdb:
+      enabled: false
+
+  # ion-c5-setup: the DB init/migration/create-admin-user CLI, NOT a long-running server
+  # (no listen port, no health endpoints). Deployed as a scale-to-zero Deployment so it
+  # exists as a chart-managed object but consumes no resources until needed:
+  #   oc scale deployment/<release>-ion-c5-setup --replicas=1
+  #   oc exec -it deploy/<release>-ion-c5-setup -- /var/ion/ion-c5-setup/ion-c5-setup <args>
+  #   oc scale deployment/<release>-ion-c5-setup --replicas=0
+  # The container's entrypoint expects a subcommand (initialize-databases / migrate <db>
+  # <version> / create-admin-user) and exits otherwise, so `command` overrides it to idle.
+  setup:
+    enabled: true
+    image:
+      repository: ion-c5-setup
+      tag: 1.0.0b4
+    replicas: 0
+    command:
+      - /bin/sh
+      - -c
+      - sleep infinity
+    containerPort: null
+    listenPortEnv: null
+    # Confirmed by the 1.0.0b4 manual §6 ("...using the environment variables
+    # ION_C5_SETUP_CONFIG_FILE, ION_C5_RECEIVER_CONFIG_FILE, etc.").
+    configFileEnv: ION_C5_SETUP_CONFIG_FILE
+    useAppSecret: true
+    peppolCert: false
+    waitForAdmin: false
+    env: {}
+    service:
+      enabled: false
+    probes:
+      enabled: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
     hpa:
       enabled: false
     pdb:
