@@ -7,9 +7,9 @@ ion-discover and ion-docval — on Red Hat OpenShift under the `restricted-v2` S
 server — it has no listen port or health endpoints, so the actual commands are still run
 by hand: scale it up, `oc exec` in, run the CLI, scale back down (see Install/Upgrades below).
 
-Chart **0.4.4** targets delivery **1.0.0b4** (images `1.0.0b4` / discover `1.0.1` / docval
-`1.3.1` — docval versions independently of the ion-c5-1.0.0bN umbrella; some environments
-override it to a later docval, see `values-int.yaml` for an example).
+Chart **0.4.6** targets delivery **1.0.0b5** (images `1.0.0b5` / discover `1.0.2` / docval
+`1.4.0-1` — docval versions independently of the ion-c5-1.0.0bN umbrella; some environments
+pin an older docval instead, see `values-int.yaml` for an example).
 Chart origin: authored by the customer because the supplier does not deliver a chart (COTS);
 supplier sign-off pending — see `../../FIT-GAP-ANALYSIS.md` and `../../HELM-CHART-GAP-ANALYSIS.md`.
 

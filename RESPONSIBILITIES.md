@@ -6,7 +6,7 @@ the Helm chart is **customer-authored** (`helm/ion-c5/`). That combination is wo
 only if the boundary below is agreed and enforced — otherwise every probe timeout and port
 number becomes an argument.
 
-**Date:** 2026-07-28 (RACI framework) · last reconciled 2026-08-13, applies to delivery 1.0.0b4.
+**Date:** 2026-07-28 (RACI framework) · last reconciled 2026-08-13, applies to delivery 1.0.0b5.
 The framework itself is evergreen; only the "which delivery" reference moves — see the chart's
 own README (`helm/ion-c5/README.md`) for the currently-targeted version and chart mechanics
 (the DB-init "Setup Job" row below predates chart 0.4.0, which removed it — see the footnote).

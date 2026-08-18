@@ -13,7 +13,7 @@ developments since, not reflected in the chapter-by-chapter analysis below:
 - Chart moved 0.2.0/0.2.1 → **0.4.2**: the setup/migrate hook Jobs and the `-env` ConfigMap
   referenced in Chapter 3/12 below were **removed entirely** in chart 0.4.0 — DB init/migration
   is now a manual step outside the chart (current mechanics: `helm/ion-c5/README.md`).
-- Delivery moved 1.0.0b2 → 1.0.0b3 → **1.0.0b4** (running in INT as of this update). b3 images
+- Delivery moved 1.0.0b2 → 1.0.0b3 → 1.0.0b4 → **1.0.0b5** (chart's current target). b3 images
   **dropped the `USER c5` declaration entirely** rather than fixing it to numeric — the opposite
   of the G-1 ask (harmless on OpenShift SCC, still open on vanilla k8s); `EXPOSE 8080` was added
   as requested (G-2, now closed); ion-docval moved to `1.3.3-1`.

@@ -1,13 +1,15 @@
 # ion-C5 — Implementation plan for OpenShift Container Platform
 
-**Rev. 4 (2026-08-13)** — targets delivery **1.0.0b4** and chart **0.4.3**. (Rev. 2, 2026-07-28,
+**Rev. 5 (2026-08-17)** — targets delivery **1.0.0b5** and chart **0.4.5**. (Rev. 2, 2026-07-28,
 targeted 1.0.0b2/chart 0.2.0; the DB-init and upgrade phases below have changed twice since —
 chart 0.4.0 removed the setup/migrate hook Jobs and the `-env` ConfigMap entirely; chart 0.4.3
 re-added `ion-c5-setup` as a **scale-to-zero Deployment** (`components.setup`), so DB
 init/migration now runs via `oc scale` + `oc exec` against a chart-managed object instead of a
 standalone `oc run` pod — and, because that object only exists once Helm has installed the
 chart, **DB initialization now happens after Helm install, not before** — Phase 4/5 swapped
-order vs. rev. 3.)
+order vs. rev. 3. Rev. 5 is a version-target bump only, 1.0.0b4 → 1.0.0b5; no new artifacts were
+inspected for this bump — `ion-c5-setup`'s config-file env var and binary path below are still
+confirmed only against the b4 manual.)
 Step-by-step deployment order for one environment (repeat per TEST → INT → PREPROD → PROD,
 changing only the environment values file). Commands assume `oc`, `helm` 3 and
 `podman`/`skopeo` on a bastion/CI runner with access to the cluster and the customer registry.
@@ -32,10 +34,11 @@ The supplier tarballs are OCI-layout archives. From `docker_images/`:
 
 ```bash
 REG=registry.customer.example/ion-c5   # adjust — matches global.imageRegistry in values.yaml
-# docval versions independently of the ion-c5-1.0.0bN umbrella (verified: the b4 bundle
-# ships 1.3.1) — if an environment runs a later docval, import that tag too/instead.
-for f in ion-c5-receiver_1.0.0b4 ion-c5-processor_1.0.0b4 ion-c5-sender_1.0.0b4 \
-         ion-c5-admin_1.0.0b4 ion-c5-setup_1.0.0b4 ion-discover_1.0.1 ion-docval_1.3.1; do
+# docval/discover version independently of the ion-c5-1.0.0bN umbrella (the b4 bundle
+# verified docval 1.3.1 — since moved to 1.4.0-1) — if an environment pins a different
+# docval/discover build, import that tag too/instead.
+for f in ion-c5-receiver_1.0.0b5 ion-c5-processor_1.0.0b5 ion-c5-sender_1.0.0b5 \
+         ion-c5-admin_1.0.0b5 ion-c5-setup_1.0.0b5 ion-discover_1.0.2 ion-docval_1.4.0-1; do
   name=${f%_*}; tag=${f##*_}
   skopeo copy oci-archive:${f}.tar.gz docker://$REG/$name:$tag
 done
@@ -151,7 +154,7 @@ admin account.
 2. Confirm `receiver_proxy_ip_addresses` covers the source IPs the receiver actually sees
    (router/ingress pod IPs or external LB IPs) — otherwise sender IPs are logged wrong.
 3. Smoke tests (from inside the namespace or via port-forward):
-   - every module: `GET /version` → `{"name":"ion-c5-...","version":"1.0.0b4"}` (or whichever
+   - every module: `GET /version` → `{"name":"ion-c5-...","version":"1.0.0b5"}` (or whichever
      delivery is currently targeted — check `Chart.yaml`'s `appVersion`);
      `GET /health/ready` → 200 with per-dependency status/latency (processor/sender via pod IP:8080)
    - discover: `GET http://ion-c5-discover/v2` → running; lookup `GET /v2/peppol-test/0106:84418745` → `exists:true`

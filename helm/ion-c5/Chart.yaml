@@ -6,8 +6,8 @@ description: >-
   ion-discover, ion-docval, and ion-c5-setup (scale-to-zero, for on-demand
   DB init/migration/create-admin-user CLI access via oc exec).
 type: application
-version: 0.4.4
-appVersion: "1.0.0b4"
+version: 0.4.6
+appVersion: "1.0.0b5"
 keywords:
   - peppol
   - as4
