@@ -25,25 +25,25 @@ below) — migration is now a manual step outside the chart.
 
 ## Summary table
 
-| # | Specialty | Fact owner | Fix owner | Severity | Status |
-|---|---|---|---|---|---|
-| G-1 | Named `USER c5` vs. runAsNonRoot / arbitrary UID | DEV | DEV (image), OCP (workaround) | High | Open — **status changed 2026-08-13**: b3+ images drop `USER` entirely rather than fixing it to numeric (harmless on OpenShift SCC; still a `runAsNonRoot` risk on vanilla k8s without the chart's `runAsUser` mitigation) |
+| # | Specialty | Fact owner | Fix owner | Severity | Status | Comment from DEV
+|---|---|---|---|---|---|---|
+| G-1 | Named `USER c5` vs. runAsNonRoot / arbitrary UID | DEV | DEV (image), OCP (workaround) | High | Open — **status changed 2026-08-13**: b3+ images drop `USER` entirely rather than fixing it to numeric (harmless on OpenShift SCC; still a `runAsNonRoot` risk on vanilla k8s without the chart's `runAsUser` mitigation) | Resolved in b4, USER removed, application can run with any UID
 | G-2 | No EXPOSE/port metadata in images | DEV | DEV | Low | **Closed 2026-08-13** — `EXPOSE 8080` confirmed present on all 7 images as of 1.0.0b3 |
-| G-3 | Silent default-port change 80→8080 broke in-cluster wiring | DEV | OCP (chart pins 80) | High | **Mitigated in chart**; release-notes ask stands |
+| G-3 | Silent default-port change 80→8080 broke in-cluster wiring | DEV | OCP (chart pins 80) | High | **Mitigated in chart**; release-notes ask stands | Manual now contains Changelog section; separate releasenotes/changelog can be provided if desired.
 | G-4 | Probe paths on ion-discover / ion-docval | DEV | OCP quick test | ~~High~~ Low | **Confirmed by email** ("all modules"); routine TEST verify |
-| G-5 | Probe timing budgets | DEV | OCP | Low | **Largely answered**: start "within seconds", docval ~10 s worst; 150 s budget ample; manual section still to add |
-| G-6 | Writable paths / readOnlyRootFilesystem / TDD storage | DEV | DEV | ~~High~~ Low | **Attested**: CRL-write oversight fixed in b2, "no other writes to disk" → chart default now `readOnlyRootFilesystem: true`. Residual: explicit TDD=DB sentence for backup scope |
-| G-7 | `migrate` semantics | DEV | DEV | Medium | **Partially answered**: per-DB, order admin-defined, idempotent, up/down, nothing to migrate yet. Residual: exact `<db>` names + app-vs-schema rollback compatibility |
-| G-8 | `create-admin-user` interactive-only — not Job-able | DEV | DEV | Medium | Open |
-| G-9 | No graceful-shutdown/SIGTERM statement | DEV | DEV | Medium | Open |
-| G-10 | ion-docval JVM sizing undefined | DEV | DEV recommend, OCP set | Medium | Open |
-| G-11 | Documentation errata | DEV | DEV | Medium | Open — **new item**: email says `*_listen_address`, manual says `*_listen_host` |
-| G-12 | No metrics ⇒ no queue-based HPA/alerting | DEV | DEV (product) / OPS+DBA (interim) | High | Open — **DEV committed: Prometheus metrics before 1.0.0 release** |
+| G-5 | Probe timing budgets | DEV | OCP | Low | **Largely answered**: start "within seconds", docval ~10 s worst; 150 s budget ample; manual section still to add | Added section to health endpoints section
+| G-6 | Writable paths / readOnlyRootFilesystem / TDD storage | DEV | DEV | ~~High~~ Low | **Attested**: CRL-write oversight fixed in b2, "no other writes to disk" → chart default now `readOnlyRootFilesystem: true`. Residual: explicit TDD=DB sentence for backup scope | Added section to database chapter, explaining the database(s), and specifically mentioning the `tdd` and `tdd_transaction` tables.
+| G-7 | `migrate` semantics | DEV | DEV | Medium | **Partially answered**: per-DB, order admin-defined, idempotent, up/down, nothing to migrate yet. Residual: exact `<db>` names + app-vs-schema rollback compatibility | Added section on migration in manual
+| G-8 | `create-admin-user` interactive-only — not Job-able | DEV | DEV | Medium | Open | Since 1.0.0b4 the first admin user is created automatically. Additionally, the ion-c5-setup image should also be usable in openshift since 1.0.0b5
+| G-9 | No graceful-shutdown/SIGTERM statement | DEV | DEV | Medium | Open | Added a section on graceful shutdown
+| G-10 | ion-docval JVM sizing undefined | DEV | DEV recommend, OCP set | Medium | Open | Added line to memory usage section.
+| G-11 | Documentation errata | DEV | DEV | Medium | Open — **new item**: email says `*_listen_address`, manual says `*_listen_host` | This should have been _host in the email.
+| G-12 | No metrics ⇒ no queue-based HPA/alerting | DEV | DEV (product) / OPS+DBA (interim) | High | Open — **DEV committed: Prometheus metrics before 1.0.0 release** | This has been added in 1.0.0b5
 | G-13 | Secret & config contract needs DEV sign-off | DEV+OCP | DEV approval | Medium | **Informal approval in email** ("not seeing anything that seems wrong"); formalize per chart release |
 | G-14 | Build hygiene: beta tags, dev remnants, labels | DEV | DEV | Medium | **Partially answered**: 4 OCI labels added, `bN`-until-feature-complete scheme stated, SBOM extraction in progress; residual: clean builds, empty `created` label, digest list |
-| G-15 | No TLS in modules; internal hops plaintext | DEV (fact) | SEC decision | Medium | Open |
+| G-15 | No TLS in modules; internal hops plaintext | DEV (fact) | SEC decision | Medium | Open | Currently not on roadmap but will be immediately added if required by customer.
 | G-16 | Kubelet probes vs. default-deny NetworkPolicy | — | OCP | Info | No action (OVN allows) |
-| G-17 | Route/AS4 limits: message size, router timeouts | DEV+NET | OCP/NET | Medium | Open |
+| G-17 | Route/AS4 limits: message size, router timeouts | DEV+NET | OCP/NET | Medium | Open | Added section "Routing and message sizes" to manual
 | G-18 | Config-change restart semantics | DEV | OCP (checksum restart in chart) | Low | Mitigated in chart |
 
 ---
